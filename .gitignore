@@ -1,0 +1,91 @@
+# ========================
+# LostIntoSpacE .gitignore
+# ========================
+
+# ---------- Dependencies ----------
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ---------- IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---------- Build Outputs ----------
+apps/web/dist/
+apps/web/.next/
+apps/web/out/
+apps/api/__pycache__/
+*.js.map
+*.d.ts
+
+# ---------- Testing ----------
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.nyc_output/
+
+# ---------- Database ----------
+*.sqlite3
+*.db
+
+# ---------- Environment ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Logs ----------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# ---------- Deployment ----------
+deployment/docker/.env
+deployment/secrets/
+
+# ---------- Simulation Outputs ----------
+simulation/output/
+*.rkt.bak
+
+# ---------- AI/ML ----------
+ai/models_cache/
+*.pkl
+*.h5
+*.pt
+
+# ---------- Temporary ----------
+tmp/
+temp/
+scratch/
+*.tmp
