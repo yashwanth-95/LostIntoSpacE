@@ -145,6 +145,14 @@ export interface NoseConeDef extends BaseComponentDef {
 
 export interface EngineDef extends BaseComponentDef {
   readonly category: 'engine';
+  /**
+   * Propellant cast into the motor itself, as solid motors carry it. Unit: kg.
+   *
+   * Zero for liquid engines, which draw from separate tanks. A motor with
+   * integral propellant needs no tanks in its stage, and `mass_kg` for such a
+   * motor is the *empty casing* mass, excluding this.
+   */
+  readonly integralPropellant_kg: number;
   /** Vacuum thrust. Unit: N */
   readonly thrust_N: number;
   /** Sea-level thrust. Unit: N */

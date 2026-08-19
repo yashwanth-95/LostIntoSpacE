@@ -1,174 +1,249 @@
 /**
- * Simulation event types — structured events emitted during simulation.
+ * Simulation events — the structured record of what happened during a flight.
  *
- * Events are the primary mechanism for:
- * 1. The failure engine to communicate what went wrong
- * 2. The telemetry system to mark significant moments
- * 3. The AI explanation layer (P4) to ground its responses
+ * Events are the engine's primary output alongside telemetry, and they serve
+ * three consumers:
  *
- * All events are plain objects with no methods, safe for serialization.
+ * 1. **P1** renders them as a mission timeline.
+ * 2. **P2** stores them as rows against a simulation run.
+ * 3. **P4** grounds its explanations in them, which is why every failure event
+ *    carries a full {@link FailureDetail} rather than only a message string.
+ *    An explanation layer that has to infer *why* from prose will invent physics.
+ *
+ * All event objects are plain data: no methods, no cycles, safe to serialize.
  *
  * @module sim/events
  */
 
-/** Event severity levels, ordered by impact. */
+/** Event severity, ordered by impact. */
 export type EventSeverity = 'info' | 'warning' | 'critical' | 'fatal';
 
 /**
- * Known simulation event types.
+ * Known event types.
  *
- * Using a string union (not an enum) so events serialize as readable strings
- * and are extensible without version-breaking changes.
+ * A string union rather than an enum, so events serialize as readable strings
+ * and new types can be added without renumbering anything.
  */
 export type SimEventType =
+  // Flight milestones
   | 'ignition'
   | 'liftoff'
-  | 'max_q'
-  | 'meco'          // Main engine cutoff
-  | 'staging'
-  | 'apogee'
+  | 'tower_clear'
   | 'supersonic'
+  | 'max_q'
+  | 'meco'
+  | 'staging'
+  | 'stage_ignition'
+  | 'apogee'
+  | 'orbit_insertion'
+  | 'payload_deployment'
+  | 'entry_interface'
+  | 'parachute_deploy'
+  | 'landing'
   | 'impact'
+  | 'mission_complete'
+  // Run control
   | 'target_reached'
   | 'timeout'
-  // Failure events
-  | 'failure_twr'           // Thrust-to-weight ratio < 1
-  | 'failure_max_q'         // Dynamic pressure exceeded limit
-  | 'failure_structural'    // Acceleration exceeded g-limit
-  | 'failure_instability'   // CP ahead of CG
-  | 'failure_trajectory'    // Trajectory divergence
-  | 'failure_fuel';         // Unexpected fuel exhaustion
+  // Failures
+  | 'failure'
+  | 'failure_twr'
+  | 'failure_max_q'
+  | 'failure_structural'
+  | 'failure_instability'
+  | 'failure_trajectory'
+  | 'failure_fuel'
+  | 'failure_engine'
+  | 'failure_tank'
+  | 'failure_guidance'
+  | 'failure_control'
+  | 'failure_separation'
+  | 'failure_communication'
+  | 'failure_power'
+  | 'failure_thermal';
 
-/**
- * A simulation event — a significant moment during flight.
- */
+/** A significant moment during flight. */
 export interface SimEvent {
-  /** Time of occurrence. Unit: s */
+  /** Time of occurrence. Unit: s. */
   readonly t: number;
   /** Event classification. */
   readonly type: SimEventType;
-  /** Severity level. */
+  /** Severity. */
   readonly severity: EventSeverity;
   /** Human-readable description. */
   readonly description: string;
-  /** Event-specific structured data (altitude, velocity, pressure, etc.) */
-  readonly data: Readonly<Record<string, unknown>>;
+  /**
+   * Structured data specific to this event — altitude, speed, pressure, stage
+   * index, and so on. Machine-readable so P4 can quote exact figures.
+   */
+  readonly data: Readonly<Record<string, number | string | boolean>>;
+  /** Full failure record, present only on failure events. */
+  readonly failure?: FailureDetail;
 }
 
-/** The subsystem where a failure originated. */
+/** Which subsystem a failure originated in. */
 export type FailureSubsystem =
   | 'propulsion'
   | 'structure'
   | 'aerodynamics'
   | 'trajectory'
-  | 'thermal';
+  | 'thermal'
+  | 'avionics'
+  | 'power'
+  | 'communication'
+  | 'recovery';
 
 /**
- * Detailed failure information, attached to failure-type SimEvents.
+ * The complete record of one failure.
  *
- * This is the data that feeds the "Why Did It Fail?" explanation pipeline.
+ * This is what feeds the "why did it fail?" explanation. Every field is filled
+ * from simulation state, never from a template — `triggerState` in particular is
+ * a snapshot of the actual numbers at the moment the rule fired.
  */
 export interface FailureDetail {
-  /** Which subsystem failed. */
+  /**
+   * Identifier for this particular failure *occurrence*.
+   *
+   * For a detected failure this is the mode id. For a scripted one it is the
+   * injection's own id, so a lesson can trace which of its scripted faults
+   * fired. Use {@link FailureDetail.modeId} to look up behaviour — the two are
+   * not interchangeable.
+   */
+  readonly id: string;
+  /**
+   * Which failure mode this is, for looking up effects and event types.
+   *
+   * Kept separate from `id` because an injection's id names the script entry,
+   * not the physics. Conflating them means a scripted failure looks up nothing
+   * and silently has no effect on the flight.
+   */
+  readonly modeId: string;
+  /** Subsystem that failed. */
   readonly subsystem: FailureSubsystem;
   /** Classification of the failure mode. */
   readonly failureMode: string;
-  /** The condition that triggered this failure. */
+  /** Severity. */
+  readonly severity: EventSeverity;
+  /** Time of failure. Unit: s. */
+  readonly t: number;
+  /** Stage involved, or null if the failure is vehicle-wide. */
+  readonly stageIndex: number | null;
+  /** The condition that fired, written out. */
   readonly triggerCondition: string;
-  /** Snapshot of relevant state values at failure time. */
+  /** The measured value that crossed the threshold. */
+  readonly measuredValue: number;
+  /** The threshold it crossed. */
+  readonly thresholdValue: number;
+  /** Unit of both values, for display. */
+  readonly unit: string;
+  /** Snapshot of relevant state at the moment of failure. */
   readonly triggerState: Readonly<Record<string, number>>;
-  /** Contributing factors (for educational explanation). */
+  /** Contributing factors, for the explanation. */
   readonly contributingFactors: readonly string[];
-  /** What happens to the mission as a result. */
+  /** What this does to the mission. */
   readonly consequence: string;
-  /** Plain-language educational explanation. */
+  /** Plain-language explanation of the underlying physics. */
   readonly educationalExplanation: string;
-  /** Suggested design change to fix this failure. */
+  /** A design change that would prevent it. */
   readonly recommendedFix: string;
   /** Slugs of related lessons in the learning system. */
   readonly relatedLessons: readonly string[];
+  /**
+   * Whether this failure ends the flight. Non-terminal failures degrade the
+   * vehicle and the simulation carries on, which is often the more interesting
+   * case to watch.
+   */
+  readonly isTerminal: boolean;
 }
 
-/** Outcome of a completed simulation. */
-export type SimOutcome = 'success' | 'partial' | 'failure';
+/**
+ * Build an event. A small helper, but it keeps `severity: 'info'` from being
+ * forgotten at the dozen call sites that emit milestones.
+ *
+ * @param t - Time. Unit: s.
+ * @param type - Event type.
+ * @param description - Human-readable description.
+ * @param data - Structured payload.
+ * @param severity - Severity. Defaults to `'info'`.
+ * @returns The event.
+ */
+export function makeEvent(
+  t: number,
+  type: SimEventType,
+  description: string,
+  data: Readonly<Record<string, number | string | boolean>> = {},
+  severity: EventSeverity = 'info',
+): SimEvent {
+  return { t, type, severity, description, data };
+}
 
 /**
- * Summary statistics for a completed simulation run.
+ * Build a failure event with its detail attached.
+ *
+ * @param type - Failure event type.
+ * @param detail - The failure record.
+ * @returns The event.
  */
+export function makeFailureEvent(
+  type: SimEventType,
+  detail: FailureDetail,
+): SimEvent {
+  return {
+    t: detail.t,
+    type,
+    severity: detail.severity,
+    description: `${detail.failureMode}: ${detail.consequence}`,
+    data: {
+      subsystem: detail.subsystem,
+      failureMode: detail.failureMode,
+      measuredValue: detail.measuredValue,
+      thresholdValue: detail.thresholdValue,
+      unit: detail.unit,
+      isTerminal: detail.isTerminal,
+      ...(detail.stageIndex !== null ? { stageIndex: detail.stageIndex } : {}),
+    },
+    failure: detail,
+  };
+}
+
+/** Overall outcome of a completed run. */
+export type SimOutcome = 'success' | 'partial' | 'failure';
+
+/** Aggregate statistics for a completed run. */
 export interface SimSummary {
-  /** Peak altitude reached. Unit: m */
+  /** Peak altitude. Unit: m. */
   readonly maxAltitude_m: number;
-  /** Peak speed. Unit: m/s */
+  /** Peak speed. Unit: m/s. */
   readonly maxSpeed_ms: number;
-  /** Peak acceleration. Unit: g (multiples of G0) */
+  /** Peak acceleration, as a multiple of standard gravity. Unit: g. */
   readonly maxAcceleration_g: number;
-  /** Peak dynamic pressure. Unit: Pa */
+  /** Peak dynamic pressure. Unit: Pa. */
   readonly maxDynamicPressure_Pa: number;
+  /** Altitude at which dynamic pressure peaked. Unit: m. */
+  readonly maxQAltitude_m: number;
   /** Peak Mach number. Dimensionless. */
   readonly maxMach: number;
-  /** Total flight time. Unit: s */
+  /** Total flight time. Unit: s. */
   readonly flightTime_s: number;
-  /** Time of apogee. Unit: s */
+  /** Time of apogee. Unit: s. */
   readonly apogeeTime_s: number;
-  /** Impact velocity (null if no impact). Unit: m/s */
+  /** Greatest downrange distance. Unit: m. */
+  readonly maxDownrange_m: number;
+  /** Impact speed, or null if the vehicle did not come down. Unit: m/s. */
   readonly impactSpeed_ms: number | null;
   /** Number of successful stage separations. */
   readonly stagesSeparated: number;
-}
-
-/**
- * A single telemetry sample — a snapshot of simulation state at one time.
- */
-export interface TelemetryPoint {
-  /** Time. Unit: s */
-  readonly t: number;
-  /** Altitude above launch site. Unit: m */
-  readonly altitude_m: number;
-  /** Speed magnitude. Unit: m/s */
-  readonly speed_ms: number;
-  /** Acceleration magnitude. Unit: m/s² */
-  readonly acceleration_ms2: number;
-  /** Current mass. Unit: kg */
-  readonly mass_kg: number;
-  /** Current thrust. Unit: N */
-  readonly thrust_N: number;
-  /** Current drag force. Unit: N */
-  readonly drag_N: number;
-  /** Dynamic pressure (q). Unit: Pa */
-  readonly dynamicPressure_Pa: number;
-  /** Mach number. Dimensionless. */
-  readonly mach: number;
-  /** Active stage index. */
-  readonly stage: number;
-  /** Current mission phase. */
-  readonly phase: string;
-  /** Downrange distance. Unit: m */
-  readonly downrange_m: number;
-}
-
-/**
- * The complete result of a simulation run.
- *
- * This is the output of `runSimulation()` and the primary data
- * consumed by the renderer, analysis engine, and AI explanation pipeline.
- */
-export interface SimResult {
-  /** Whether the mission objective was achieved. */
-  readonly success: boolean;
-  /** Overall outcome classification. */
-  readonly outcome: SimOutcome;
-  /** Aggregate statistics. */
-  readonly summary: SimSummary;
-  /** Sampled telemetry timeline. */
-  readonly telemetry: readonly TelemetryPoint[];
-  /** All events that occurred during the simulation. */
-  readonly events: readonly SimEvent[];
-  /** Detailed failure information (empty if no failures). */
-  readonly failures: readonly FailureDetail[];
-  /** Error messages (empty if simulation ran without errors). */
-  readonly errors: readonly string[];
-  /** Total integration steps computed. */
-  readonly totalSteps: number;
-  /** Wall-clock duration of the simulation computation. Unit: s */
-  readonly wallTime_s: number;
+  /** Propellant consumed. Unit: kg. */
+  readonly propellantUsed_kg: number;
+  /**
+   * Velocity actually gained, against the ideal delta-v the vehicle carried.
+   * The gap is the gravity, drag, and steering losses. Unit: m/s.
+   */
+  readonly deltaVAchieved_ms: number;
+  /** Ideal delta-v from the rocket equation. Unit: m/s. */
+  readonly deltaVIdeal_ms: number;
+  /** Velocity lost to gravity during the climb. Unit: m/s. */
+  readonly gravityLoss_ms: number;
+  /** Velocity lost to atmospheric drag. Unit: m/s. */
+  readonly dragLoss_ms: number;
 }

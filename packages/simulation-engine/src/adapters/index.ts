@@ -1,15 +1,32 @@
 /**
- * React / R3F adapters — hooks and components for frontend integration.
+ * React adapters — the only layer that imports React.
  *
- * This is the ONLY layer that may import React and @react-three/fiber.
- * P1 (Frontend) imports from this layer to embed simulation into the app.
+ * P1 consumes the engine through this module. Nothing here contains physics or
+ * rendering logic; it is a thin binding over `sim/` and `renderer/`, and the
+ * engine is fully usable without it (a Node script or a Web Worker imports
+ * `sim/` directly).
+ *
+ * ```tsx
+ * const builder = useRocketBuilder({ initialDesign, registry });
+ * const sim = useSimulation({ config, autoStart: true });
+ *
+ * <RocketViewer layout={builder.analysis.layout} simulationRef={sim.simulationRef} />
+ * ```
  *
  * @module adapters
  */
 
-// Future exports (uncomment as implemented):
-// export { useSimulation } from './useSimulation.js';
-// export { useVehicleBuilder } from './useVehicleBuilder.js';
-// export { RocketView } from './RocketView.js';
-// export { TrajectoryView } from './TrajectoryView.js';
-// export { SimulationProvider } from './SimulationProvider.js';
+export { useSimulation } from './useSimulation.js';
+export type {
+  UseSimulationOptions,
+  UseSimulationResult,
+} from './useSimulation.js';
+
+export { useRocketBuilder } from './useRocketBuilder.js';
+export type {
+  UseRocketBuilderOptions,
+  UseRocketBuilderResult,
+} from './useRocketBuilder.js';
+
+export { RocketViewer } from './RocketViewer.js';
+export type { RocketViewerProps } from './RocketViewer.js';

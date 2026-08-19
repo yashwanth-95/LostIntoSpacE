@@ -1,0 +1,19 @@
+{
+  // Compiles ONLY the layers that must run in Node and in a Web Worker.
+  //
+  // `lib` deliberately omits DOM. If anything in physics/, core/, or sim/ ever
+  // reaches for `window`, `document`, or a canvas, this config fails to compile
+  // and the architecture boundary is caught at build time rather than at the
+  // moment someone tries to run the engine off the main thread.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "outDir": null,
+    "rootDir": null
+  },
+  "include": ["src/physics/**/*.ts", "src/core/**/*.ts", "src/sim/**/*.ts"]
+}

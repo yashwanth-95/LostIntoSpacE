@@ -1,0 +1,13 @@
+{
+  // Typechecks the test suite, which the build config excludes.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "outDir": null,
+    "rootDir": null
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts"]
+}

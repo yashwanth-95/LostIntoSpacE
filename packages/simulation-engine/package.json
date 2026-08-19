@@ -1,7 +1,7 @@
 {
   "name": "@lostintospace/simulation-engine",
   "version": "0.1.0",
-  "description": "Physics simulation engine for LostIntoSpacE — rocket dynamics, 3D visualization, and React adapters",
+  "description": "Physics simulation engine for LostIntoSpacE \u2014 rocket dynamics, 3D visualization, and React adapters",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -11,13 +11,16 @@
     "./core": "./src/core/index.ts",
     "./sim": "./src/sim/index.ts",
     "./renderer": "./src/renderer/index.ts",
-    "./adapters": "./src/adapters/index.ts"
+    "./adapters": "./src/adapters/index.ts",
+    "./integration": "./src/integration/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.headless.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "typecheck:headless": "tsc --noEmit -p tsconfig.headless.json",
+    "build": "tsc -p tsconfig.json"
   },
   "peerDependencies": {
     "@react-three/drei": ">=9.0.0",

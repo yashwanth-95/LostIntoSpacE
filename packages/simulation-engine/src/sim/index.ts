@@ -1,9 +1,8 @@
 /**
- * Simulation engine — state machine, integrator, telemetry, events.
+ * Simulation engine — state machine, integrator, telemetry, events, failures.
  *
- * This layer depends on physics/ and core/.
- * It must NEVER import Three.js, React, or browser APIs.
- * It can run in a Web Worker.
+ * Depends on `physics/` and `core/` only. It must never import Three.js, React,
+ * or a browser API, which is what lets it run in Node and in a Web Worker.
  *
  * @module sim
  */
@@ -11,10 +10,9 @@
 export * from './state.js';
 export * from './config.js';
 export * from './events.js';
-
-// Future exports (uncomment as implemented):
-// export * from './runner.js';
-// export * from './integrator.js';
-// export * from './failures.js';
-// export * from './telemetry.js';
-// export * from './result.js';
+export * from './mission-state.js';
+export * from './telemetry.js';
+export * from './guidance.js';
+export * from './failures.js';
+export * from './forces.js';
+export * from './runner.js';
