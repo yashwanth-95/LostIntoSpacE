@@ -8,6 +8,7 @@ from .citations import (
     ValidationResult,
 )
 from .context import ContextBudget, ContextBuilder, ContextSelection
+from .live_sources import EVENT_PATTERNS, SATELLITE_PATTERNS, LiveSourceResolver
 from .rag import GroundedRAG, LiveDataResolver, NullLiveResolver, RAGResult
 
 __all__ = [
@@ -15,6 +16,9 @@ __all__ = [
     "RAGResult",
     "LiveDataResolver",
     "NullLiveResolver",
+    "LiveSourceResolver",
+    "SATELLITE_PATTERNS",
+    "EVENT_PATTERNS",
     "ContextBuilder",
     "ContextBudget",
     "ContextSelection",

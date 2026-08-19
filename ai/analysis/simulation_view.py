@@ -130,6 +130,21 @@ def _first(payload: Dict[str, Any], keys: Sequence[str]) -> Optional[Any]:
     return None
 
 
+def _rule_key_for(event_type: str) -> Optional[str]:
+    """Map an event identifier onto a documented failure rule, or `None`."""
+    normalized = str(event_type or "").lower().replace("failure_", "").replace(
+        "-", "_"
+    )
+    if not normalized:
+        return None
+    if normalized in FAILURE_RULES:
+        return normalized
+    for key in FAILURE_RULES:
+        if key in normalized or normalized in key:
+            return key
+    return None
+
+
 class TelemetrySample(BaseModel):
     """One telemetry snapshot, per the documented state vector.
 
@@ -201,15 +216,7 @@ class SimulationEventView(BaseModel):
     @property
     def rule_key(self) -> Optional[str]:
         """The documented failure rule this event corresponds to, if any."""
-        normalized = self.event_type.lower().replace("failure_", "").replace(
-            "-", "_"
-        )
-        if normalized in FAILURE_RULES:
-            return normalized
-        for key in FAILURE_RULES:
-            if key in normalized or normalized in key:
-                return key
-        return None
+        return _rule_key_for(self.event_type)
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "SimulationEventView":
@@ -230,8 +237,13 @@ class SimulationEventView(BaseModel):
                 #: problem than routine.
                 severity = FailureSeverity.WARNING
 
-        known = event_type in DOCUMENTED_EVENT_TYPES or event_type.startswith(
-            "failure"
+        #: A `failure_*` prefix is not enough to count as recognised: the
+        #: engine documents a fixed set of failure rules, and an identifier
+        #: outside that set is one this analysis cannot interpret. Treating it
+        #: as known would let an unattributable failure be explained
+        #: confidently.
+        known = event_type in DOCUMENTED_EVENT_TYPES or bool(
+            _rule_key_for(event_type)
         )
         values = {
             key: value for key, value in payload.items()

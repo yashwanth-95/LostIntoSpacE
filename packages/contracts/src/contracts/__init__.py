@@ -20,6 +20,24 @@ from .ai import (
     ContextItem,
     DataOrigin,
 )
+from .analysis import (
+    FailureAnalysis,
+    FailureSeverity,
+    MissionSummary,
+    MissionTimelineEntry,
+    Mitigation,
+    ScientificExplanation,
+    SimulationObservation,
+    SourceConflict,
+    SubsystemKind,
+)
+from .recommendations import (
+    LearnerLevel,
+    Recommendation,
+    RecommendationKind,
+    RecommendationSet,
+    RecommendationSignal,
+)
 from .provenance import REDACTION_MARKER, FreshnessClass, SourceReference, SourceType
 from .search import (
     MatchType,
@@ -61,4 +79,20 @@ __all__ = [
     "AnswerLimitation",
     "Conversation",
     "ConversationTurn",
+    # analysis
+    "FailureAnalysis",
+    "SimulationObservation",
+    "ScientificExplanation",
+    "Mitigation",
+    "FailureSeverity",
+    "SubsystemKind",
+    "MissionSummary",
+    "MissionTimelineEntry",
+    "SourceConflict",
+    # recommendations
+    "Recommendation",
+    "RecommendationSet",
+    "RecommendationKind",
+    "RecommendationSignal",
+    "LearnerLevel",
 ]

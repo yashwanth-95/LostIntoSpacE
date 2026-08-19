@@ -26,6 +26,7 @@ from contracts.provenance import FreshnessClass, SourceReference, SourceType
 from contracts.search import SearchResult
 
 from ..safety.sanitize import InjectionFinding, sanitize_context_text
+from ..safety.source_validation import verify_source_reference
 
 __all__ = ["ContextBudget", "ContextSelection", "ContextBuilder"]
 
@@ -59,6 +60,8 @@ class ContextSelection(BaseModel):
     injection_findings: List[InjectionFinding] = Field(default_factory=list)
     #: Items whose content is past its freshness policy.
     stale_items: List[str] = Field(default_factory=list)
+    #: Sources whose declared identity did not match the host they link to.
+    source_warnings: List[str] = Field(default_factory=list)
     characters_used: int = 0
 
     @property
@@ -184,6 +187,16 @@ class ContextBuilder:
                 continue
 
             item = self._to_context_item(result, sanitized.text, "S{0}".format(index))
+
+            #: A source claiming one identity while linking to another host is
+            #: an impersonation attempt, and everything downstream reasons
+            #: about the *declared* source. The link is dropped rather than the
+            #: item, so the content is still usable but not clickable.
+            check = verify_source_reference(item.source)
+            if check.is_impersonation:
+                selection.source_warnings.append(check.detail)
+                item = item.model_copy(update={"url": None})
+
             if item.staleness_note:
                 selection.stale_items.append(item.canonical_id)
             selection.items.append(item)
