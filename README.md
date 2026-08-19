@@ -1,4 +1,4 @@
-<![CDATA[# 🚀 LostIntoSpacE
+<![CDATA# 🚀 LostIntoSpacE
 
 > A Space Exploration & Rocket Engineering Education Platform
 
