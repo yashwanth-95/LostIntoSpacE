@@ -438,6 +438,19 @@ class KeywordIndex:
         singular = singularize(needle)
         return bool(singular and singular in self._postings)
 
+    #: Words that name a *catalogue or namespace* rather than a subject.
+    #: "What is NORAD 25544?" is a question about object 25544, not about an
+    #: entity called NORAD — and treating the namespace as an unknown subject
+    #: made the system refuse questions it could answer perfectly well. This is
+    #: the over-aggressive-filter failure the injection scanner is careful to
+    #: avoid, arriving through a different door.
+    IDENTIFIER_NAMESPACES = frozenset({
+        "norad", "cospar", "spk", "spkid", "tle", "gp", "omm", "sbdb",
+        "mpc", "jpl", "nasa", "esa", "isro", "nrsc", "ntrs", "eonet",
+        "celestrak", "copernicus", "bhoonidhi", "id", "no", "cat",
+        "catalog", "catalogue", "designation", "number",
+    })
+
     def unknown_proper_nouns(self, text: str) -> List[str]:
         """Capitalized query terms that appear nowhere in the corpus.
 
@@ -468,6 +481,8 @@ class KeywordIndex:
             if not stripped[0].isupper():
                 continue
             if stripped.lower() in STOP_WORDS:
+                continue
+            if stripped.lower() in self.IDENTIFIER_NAMESPACES:
                 continue
             #: An all-caps token is often an acronym worth the same treatment,
             #: but a single letter is too weak a signal to act on.

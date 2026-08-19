@@ -44,3 +44,14 @@ def retriever(corpus, keyword, embeddings):
     )
     semantic = SemanticSearch(store, embeddings, keyword_index=keyword)
     return HybridSearch(keyword, semantic)
+
+
+@pytest.fixture(scope="session")
+def record_store(corpus):
+    """Canonical records by id, as P2's persistence layer will eventually be."""
+    from data.ingestion import RecordStore
+
+    store = RecordStore()
+    for record in corpus:
+        store.put(record)
+    return store

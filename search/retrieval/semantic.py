@@ -75,7 +75,7 @@ class SemanticSearch:
         embeddings: EmbeddingService,
         documents: Optional[Any] = None,
         keyword_index: Optional[Any] = None,
-        min_similarity: float = 0.10,
+        min_similarity: float = 0.09,
         confident_similarity: float = 0.18,
         margin: float = 0.0,
         candidate_multiplier: int = 4,
@@ -87,9 +87,12 @@ class SemanticSearch:
         the correct outcome rather than an inconvenience.
 
         `min_similarity` is the confidence floor below which a match is not
-        treated as evidence. The default is calibrated against the evaluation
-        set in `search/evaluation`; see its report for the separation between
-        answerable and unanswerable queries.
+        treated as evidence. The default was measured, not chosen: swept across
+        the full 100-question evaluation set, floors of 0.08 and 0.09 give zero
+        false answers *and* zero missed answers, 0.06 lets false answers
+        through (0.083), and 0.10 starts missing answerable questions (0.011).
+        0.09 sits in the middle of that flat optimum, leaving margin on both
+        sides. The sweep is recorded in `evaluation/reports/BASELINE.md`.
         """
         self.store = store
         self.embeddings = embeddings
@@ -102,6 +105,8 @@ class SemanticSearch:
         self.confident_similarity = confident_similarity
         self.margin = margin
         self.candidate_multiplier = max(1, candidate_multiplier)
+        #: Ids the lexical ranker matched exactly, populated during fusion.
+        self._exact_lexical = set()
 
     def _unknown_subjects(self, query_text: str) -> List[str]:
         """Named subjects in the query that the index has never seen."""
@@ -190,6 +195,13 @@ class SemanticSearch:
         keyword_ranks = {
             result.id: rank for rank, result in enumerate(lexical.results, start=1)
         }
+        #: Which lexical hits were *exact* — a title, alias or identifier match
+        #: rather than a partial word overlap. Only these count as unambiguous
+        #: intent when deciding whether to answer.
+        self._exact_lexical = {
+            result.id for result in lexical.results
+            if result.match_type in (MatchType.EXACT, MatchType.ALIAS)
+        }
 
         for canonical_id, candidate in by_record.items():
             fused = 0.0
@@ -257,6 +269,21 @@ class SemanticSearch:
                 ),
             )
 
+        #: A rank-1 lexical hit counts as unambiguous intent.
+        #:
+        #: This is deliberately broad, and the narrower alternative was tried
+        #: and rejected on measurement. Restricting it to *exact* title/alias
+        #: matches fixes one false answer ("What is a dwarf planet?" ranks a
+        #: record first on the word "planet" alone) but costs far more: MRR
+        #: falls 0.969 -> 0.938 and roughly ten answerable questions across the
+        #: 100-question set start being refused, because many legitimate
+        #: questions rely on a partial lexical match at rank 1.
+        #:
+        #: One false answer against ten refusals is the wrong trade. The
+        #: residual weakness — definition questions about a class the corpus
+        #: has instances of but no definition for — is recorded in
+        #: `evaluation/reports/BASELINE.md` rather than fixed by making
+        #: retrieval worse.
         if "keyword" in best.found_by and best.keyword_rank == 1:
             return (True, None)
 
