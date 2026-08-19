@@ -1,0 +1,69 @@
+{
+  "title": "EONET Events",
+  "description": "Natural events from EONET.",
+  "link": "https://eonet.gsfc.nasa.gov/api/v3/events",
+  "events": [
+    {
+      "id": "EONET_22798",
+      "title": "Wildfire Picture Rock, Lake, Oregon",
+      "description": "3 Miles N from Summer Lake, OR",
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_22798",
+      "closed": null,
+      "categories": [
+        {
+          "id": "wildfires",
+          "title": "Wildfires"
+        }
+      ],
+      "sources": [
+        {
+          "id": "IRWIN",
+          "url": "https://irwin.doi.gov/observer/incidents/2026-ORLAD-260313"
+        }
+      ],
+      "geometry": [
+        {
+          "magnitudeValue": 1625.0,
+          "magnitudeUnit": "acres",
+          "date": "2026-08-16T15:55:00Z",
+          "type": "Point",
+          "coordinates": [
+            -120.774487,
+            43.00919
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EONET_22800",
+      "title": "Wildfire CATO 2, Chaves, New Mexico",
+      "description": "40 Miles NE from Roswell, NM",
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_22800",
+      "closed": null,
+      "categories": [
+        {
+          "id": "wildfires",
+          "title": "Wildfires"
+        }
+      ],
+      "sources": [
+        {
+          "id": "IRWIN",
+          "url": "https://irwin.doi.gov/observer/incidents/2026-NMROD-000632"
+        }
+      ],
+      "geometry": [
+        {
+          "magnitudeValue": 2080.0,
+          "magnitudeUnit": "acres",
+          "date": "2026-08-15T23:18:00Z",
+          "type": "Point",
+          "coordinates": [
+            -103.9452,
+            33.50765
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+# Python tooling configuration.
+#
+# Owner: P4 (AI / Search / Data / Integration).
+# Scope: this file configures ONLY the P4-owned Python trees (`data/`, `search/`,
+# `ai/`, `packages/contracts/`). It deliberately does not declare or configure
+# `apps/api/` (P2), `simulation/` or `scientific/` (P3) — those teams add their
+# own dependency manifests.
+#
+# Interpreter floor is 3.9 because that is the only interpreter available in the
+# development environment (see docs/PERSON4_DATA_ARCHITECTURE.md §0.5). Do not
+# use `X | Y` annotation syntax, `match`, or dataclass `slots=`/`kw_only=`.
+
+[project]
+name = "lostintospace-data"
+version = "0.1.0"
+description = "P4 canonical space-data models, source adapters, search and AI layers"
+requires-python = ">=3.9"
+dependencies = [
+    "pydantic>=2.0,<3",
+    "httpx>=0.24",
+    "numpy>=1.21",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "respx>=0.20",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["data/tests", "search/tests", "ai/tests"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"
+asyncio_mode = "auto"
+markers = [
+    "live: hits a real external API; skipped unless LOSTINTOSPACE_LIVE_TESTS=1",
+]
+filterwarnings = ["error::DeprecationWarning:data.*", "error::DeprecationWarning:search.*"]

@@ -1,0 +1,114 @@
+{
+  "type": "FeatureCollection",
+  "context": {
+    "limit": 2,
+    "returned": 2
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "NISAR_S_RSLC_001_025_A_014_2000_SHNA_A_20260714T053212_20260714T053240_P01101_N_F_J_001",
+      "collection": "NISAR-S-RSLC",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [77.12, 28.41],
+            [78.06, 28.52],
+            [77.94, 29.38],
+            [76.99, 29.27],
+            [77.12, 28.41]
+          ]
+        ]
+      },
+      "bbox": [76.99, 28.41, 78.06, 29.38],
+      "properties": {
+        "datetime": "2026-07-14T05:32:12Z",
+        "start_datetime": "2026-07-14T05:32:12Z",
+        "end_datetime": "2026-07-14T05:32:40Z",
+        "title": "NISAR S-SAR RSLC 2026-07-14 Delhi",
+        "mission": "NISAR",
+        "platform": "NISAR",
+        "instruments": ["S-SAR"],
+        "product_type": "RSLC",
+        "processing_level": "L1",
+        "sar:instrument_mode": "SHNA",
+        "sat:absolute_orbit": 1101,
+        "sat:relative_orbit": 14,
+        "sat:orbit_state": "ascending",
+        "created": "2026-07-14T09:14:02Z",
+        "updated": "2026-07-14T09:20:11Z",
+        "constellation": "NISAR"
+      },
+      "assets": {
+        "data": {
+          "href": "https://bhoonidhi-api.nrsc.gov.in/download?id=NISAR_S_RSLC_001&collection=NISAR-S-RSLC",
+          "type": "application/x-hdf5",
+          "roles": ["data"]
+        },
+        "metadata": {
+          "href": "https://bhoonidhi-api.nrsc.gov.in/data/collections/NISAR-S-RSLC/items/NISAR_S_RSLC_001",
+          "type": "application/json",
+          "roles": ["metadata"]
+        }
+      },
+      "links": [
+        {
+          "rel": "self",
+          "href": "https://bhoonidhi-api.nrsc.gov.in/data/collections/NISAR-S-RSLC/items/NISAR_S_RSLC_001_025_A_014_2000_SHNA_A_20260714T053212_20260714T053240_P01101_N_F_J_001"
+        },
+        {
+          "rel": "collection",
+          "href": "https://bhoonidhi-api.nrsc.gov.in/data/collections/NISAR-S-RSLC"
+        }
+      ]
+    },
+    {
+      "type": "Feature",
+      "id": "RS2_LISS3_20260712_094501_PATH99_ROW58",
+      "collection": "RESOURCESAT-2",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [72.51, 18.88],
+            [73.42, 18.94],
+            [73.35, 19.81],
+            [72.43, 19.75],
+            [72.51, 18.88]
+          ]
+        ]
+      },
+      "bbox": [72.43, 18.88, 73.42, 19.81],
+      "properties": {
+        "datetime": "2026-07-12T09:45:01Z",
+        "title": "RESOURCESAT-2 LISS-III 2026-07-12 Mumbai",
+        "mission": "RESOURCESAT-2",
+        "satellite": "RESOURCESAT-2",
+        "sensor": "LISS-III",
+        "productType": "GEOTIFF",
+        "processingLevel": "L2",
+        "eo:cloud_cover": 18.5,
+        "orbit_number": 71204,
+        "created": "2026-07-12T12:02:00Z"
+      },
+      "assets": {},
+      "links": [
+        {
+          "rel": "self",
+          "href": "https://bhoonidhi-api.nrsc.gov.in/data/collections/RESOURCESAT-2/items/RS2_LISS3_20260712_094501_PATH99_ROW58"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "rel": "next",
+      "href": "https://bhoonidhi-api.nrsc.gov.in/data/search",
+      "method": "POST",
+      "body": {
+        "token": "next:eyJvZmZzZXQiOjJ9"
+      }
+    }
+  ]
+}
