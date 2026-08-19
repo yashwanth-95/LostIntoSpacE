@@ -126,18 +126,24 @@ See `docs/architecture/DATABASE.md` for full schema.
 
 ```
 users ──1:N──> projects ──1:N──> missions ──1:1──> vehicles
-                                     │                  │
-                                     │              1:N stages
-                                     │                  │
-                                     │              N:1 components
-                                     │
-                                 1:N simulation_runs
-                                     │
-                                 1:N telemetry_points
-                                     │
-                                 1:N simulation_events
-                                     │
-                                 0:N failure_events
+  │                                  │                  │
+  │                                  │              1:N stages
+  │                                  │                  │
+  │                                  │              N:1 components
+  │                                  │
+  │                              1:N simulation_runs
+  │                                  │
+  │                              1:N telemetry_points
+  │                                  │
+  │                              1:N simulation_events
+  │                                  │
+  │                              0:N failure_events
+  │
+  ├──1:N──> refresh_tokens        (session/logout support — see DATABASE.md)
+  └──1:N──> conversations ──1:N──> messages
+                │
+        soft-links (JSONB context_ref, not FK) to a mission /
+        simulation_run / lesson — see DATABASE.md `conversations`
 
 space_objects (standalone catalog)
 lessons (standalone catalog)

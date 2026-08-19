@@ -19,6 +19,31 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 ```
 
+### refresh_tokens
+
+> Added in the pre-Phase-2 architecture correction (2026-08-18). Closes the gap where `POST /auth/logout` had no mechanism to actually revoke anything, since bare stateless JWTs cannot be individually invalidated before expiry. See `docs/decisions/DECISION_LOG.md` #16.
+>
+> **Only refresh tokens are persisted.** Access tokens remain stateless (short-lived, `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`, verified by signature only, never hit the DB). Refresh tokens are long-lived (`JWT_REFRESH_TOKEN_EXPIRE_DAYS`), so each issued refresh token gets a row here, letting logout/rotation/incident-response actually revoke access. Never store the raw token — only a hash of it (e.g. SHA-256), the same way `password_hash` never stores a raw password.
+
+```sql
+CREATE TABLE refresh_tokens (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash      VARCHAR(255) NOT NULL,          -- hash of the refresh token, never the raw value
+    issued_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    revoked_at      TIMESTAMPTZ,                    -- set on logout or manual revocation; NULL = still valid
+    replaced_by     UUID REFERENCES refresh_tokens(id),  -- set on rotation, points at the token that superseded this one
+    user_agent      TEXT,
+    ip_address      VARCHAR(45),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE UNIQUE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+```
+
+A refresh token is valid only if `revoked_at IS NULL AND expires_at > now()`. `POST /auth/logout` sets `revoked_at`; `POST /auth/refresh` should rotate (issue a new row, set `replaced_by` on the old one, revoke the old one) rather than reuse the same token indefinitely.
+
 ### projects
 ```sql
 CREATE TABLE projects (
@@ -243,10 +268,43 @@ CREATE TABLE search_history (
 CREATE INDEX idx_searchhist_user ON search_history(user_id, created_at DESC);
 ```
 
+### conversations
+
+> Added in the pre-Phase-2 architecture correction (2026-08-18). P2 owns Conversation/message persistence per scope; this was previously undocumented despite being listed as an explicit backend responsibility. Backs `/ai/tutor`, `/ai/failure-analysis`, `/ai/recommend`. See `docs/decisions/DECISION_LOG.md` #17.
+
+```sql
+CREATE TABLE conversations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title           VARCHAR(200),
+    context_type    VARCHAR(30) NOT NULL DEFAULT 'general',  -- general | tutor | failure_analysis | recommendation
+    context_ref     JSONB,          -- soft link to what the conversation is about, e.g. {"type": "mission", "id": "..."} or {"type": "simulation_run", "id": "..."} or {"type": "lesson", "id": "..."}. Intentionally not a FK: conversation history should survive deletion of the thing it was about, and the referenced entity type varies.
+    status          VARCHAR(20) NOT NULL DEFAULT 'active',   -- active | archived
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_conversations_user ON conversations(user_id, updated_at DESC);
+```
+
+### messages
+```sql
+CREATE TABLE messages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role            VARCHAR(20) NOT NULL,    -- user | assistant | system
+    content         TEXT NOT NULL,
+    grounding       JSONB DEFAULT '[]',      -- references to the deterministic data the response is grounded in (simulation_runs, failure_events, lessons, space_objects) — enforces "AI explains, models calculate" (ARCHITECTURE.md principle #2): every AI message should be traceable to a source, not asserted on its own authority
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at);
+```
+
+Fields specific to AI providers (tool-call payloads, token usage, model name) are deliberately left out of this design — that's AI implementation detail owned by P4, not something backend should pre-decide. If P4 needs to persist those, extend `messages` with agreement, not by backend unilaterally.
+
 ## Migration Strategy
 - Use Alembic for all migrations
 - Never edit a released migration — create a new one
-- Seed data lives in `database/seeds/`
+- Seed data *content* (space objects, lessons, fallback datasets) is authored by P4 in `data/seeds/` and `data/fallback/`. Seed *loading* into Postgres — the idempotent scripts that read that content and insert/upsert it — is P2's responsibility and lives in `database/seeds/`. See `database/README.md` and `data/README.md` for the full boundary statement.
 
 ## Indexing Strategy
 - B-tree on all foreign keys and common filters
