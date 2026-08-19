@@ -37,12 +37,14 @@ python seeds/seed_all.py
 ```bash
 cd apps/api
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
-uvicorn src.main:app --reload --port 8000
+source venv/bin/activate  # Linux/Mac. Windows Git Bash: source venv/Scripts/activate
+pip install -e ".[dev]"
+python -m uvicorn src.main:app --reload --port 8000
 ```
 
-API docs available at: `http://localhost:8000/docs`
+Dependencies are declared in `apps/api/pyproject.toml` (installed above via `pip install -e ".[dev]"`), not a `requirements.txt`. `.env` is read from the repo root regardless of which directory you run these commands from — see `apps/api/README.md` "Local Development" for details.
+
+API docs available at: `http://localhost:8000/docs`. Health check: `http://localhost:8000/api/v1/health`.
 
 ## Step 4 — Frontend Setup
 
@@ -58,8 +60,9 @@ Frontend available at: `http://localhost:5173`
 
 1. Open `http://localhost:5173` — should see landing page
 2. Open `http://localhost:8000/docs` — should see Swagger UI
-3. Register a test account
-4. Create a project
+3. Open `http://localhost:8000/api/v1/health` — should return `{"status":"success","data":{"state":"ok",...}}`
+4. Register a test account *(not yet implemented — Phase 3+, see `docs/backend/BACKEND_STATE.md`)*
+5. Create a project *(not yet implemented — Phase 3+)*
 
 ## Development Scripts
 

@@ -8,10 +8,13 @@ Ingest, normalize, and cache data from external sources. Provide bundled fallbac
 ## Structure
 - `ingestion/` — Fetchers for external APIs (NASA, etc.)
 - `normalization/` — Schema validation, unit normalization
-- `seeds/` — Initial seed data scripts
+- `seeds/` — **Content only.** Initial seed content — space object records, lesson text, demo data — as source files (JSON, etc.). P4 owns and authors this content.
 - `fallback/` — Bundled JSON datasets for offline mode
 - `cache/` — Caching strategies
 - `tests/` — Ingestion pipeline tests
+
+## Ownership Boundary: `data/seeds/` vs `database/seeds/`
+This directory does not load anything into Postgres. `data/seeds/` (and `data/fallback/`) hold the source content; `database/seeds/` (P2-owned, see `database/README.md`) holds the idempotent scripts that read this content and upsert it into the database. If content shape changes here, the loader scripts in `database/seeds/` need to change too — coordinate rather than each side guessing the other's format. See `docs/decisions/DECISION_LOG.md` #18.
 
 ## Verified External Data Sources
 
