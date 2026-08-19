@@ -1,0 +1,307 @@
+[
+  {
+    "ele220": [],
+    "ele255": [],
+    "eq0": [],
+    "eq0_dict": [],
+    "eq1": [],
+    "eq1_dict": [],
+    "mpc_orb": [
+      {
+        "CAR": {
+          "coefficient_names": [
+            "x",
+            "y",
+            "z",
+            "vx",
+            "vy",
+            "vz"
+          ],
+          "coefficient_uncertainties": [
+            1.21161e-06,
+            2.54153e-06,
+            1.5686e-06,
+            7.59677e-09,
+            4.0517e-09,
+            6.16796e-09
+          ],
+          "coefficient_values": [
+            2.72077753170503,
+            0.92580050470423,
+            -0.471929778443405,
+            -0.003553885052683,
+            0.00909332165722517,
+            0.000942585268159591
+          ],
+          "covariance": {
+            "cov00": 1.467996551204218e-12,
+            "cov01": -1.976493750285967e-12,
+            "cov02": 8.448008364276296e-14,
+            "cov03": 7.012978586334258e-15,
+            "cov04": 1.26713704849282e-16,
+            "cov05": -1.347706237544793e-15,
+            "cov06": null,
+            "cov07": null,
+            "cov08": null,
+            "cov09": null,
+            "cov11": 6.459358155576872e-12,
+            "cov12": 5.795505280246643e-13,
+            "cov13": -1.770767086287419e-14,
+            "cov14": -7.742522012267572e-15,
+            "cov15": 2.677970594936344e-15,
+            "cov16": null,
+            "cov17": null,
+            "cov18": null,
+            "cov19": null,
+            "cov22": 2.460507122582298e-12,
+            "cov23": -2.264023016665622e-15,
+            "cov24": -3.162192703018231e-16,
+            "cov25": -6.040299477488776e-16,
+            "cov26": null,
+            "cov27": null,
+            "cov28": null,
+            "cov29": null,
+            "cov33": 5.771098331711575e-17,
+            "cov34": 1.821890813958478e-17,
+            "cov35": -2.04218318624022e-18,
+            "cov36": null,
+            "cov37": null,
+            "cov38": null,
+            "cov39": null,
+            "cov44": 1.641628415064564e-17,
+            "cov45": -3.595563550569532e-18,
+            "cov46": null,
+            "cov47": null,
+            "cov48": null,
+            "cov49": null,
+            "cov55": 3.804372507231874e-17,
+            "cov56": null,
+            "cov57": null,
+            "cov58": null,
+            "cov59": null,
+            "cov66": null,
+            "cov67": null,
+            "cov68": null,
+            "cov69": null,
+            "cov77": null,
+            "cov78": null,
+            "cov79": null,
+            "cov88": null,
+            "cov89": null,
+            "cov99": null
+          },
+          "eigenvalues": [
+            3.09129e-11,
+            2.3095e-09,
+            6.12769e-09,
+            8.58315e-07,
+            1.56426e-06,
+            2.68409e-06
+          ]
+        },
+        "COM": {
+          "coefficient_names": [
+            "q",
+            "e",
+            "i",
+            "node",
+            "argperi",
+            "peri_time"
+          ],
+          "coefficient_uncertainties": [
+            8.08234e-07,
+            2.92222e-07,
+            3.27171e-05,
+            0.000185915,
+            0.000283887,
+            0.0010164
+          ],
+          "coefficient_values": [
+            2.54553801175322,
+            0.079576366193319,
+            10.5878872818242,
+            80.249637228685,
+            73.2997406519944,
+            61599.4493135724
+          ],
+          "covariance": {
+            "cov00": 6.532426803236941e-13,
+            "cov01": -2.360402053039657e-13,
+            "cov02": -3.26592202577611e-13,
+            "cov03": -3.732366692357822e-13,
+            "cov04": -1.567487055737014e-11,
+            "cov05": -6.130400023773103e-11,
+            "cov06": null,
+            "cov07": null,
+            "cov08": null,
+            "cov09": null,
+            "cov11": 8.539380154123017e-14,
+            "cov12": 1.353733001665182e-13,
+            "cov13": 3.980963298018857e-14,
+            "cov14": 5.697220420548267e-12,
+            "cov15": 2.383562933753831e-11,
+            "cov16": null,
+            "cov17": null,
+            "cov18": null,
+            "cov19": null,
+            "cov22": 1.070405639296319e-09,
+            "cov23": -9.436109787568419e-10,
+            "cov24": 8.067673214353033e-10,
+            "cov25": -3.973692347921982e-10,
+            "cov26": null,
+            "cov27": null,
+            "cov28": null,
+            "cov29": null,
+            "cov33": 3.456444697956035e-08,
+            "cov34": -3.370526594448029e-08,
+            "cov35": 7.294232056017668e-10,
+            "cov36": null,
+            "cov37": null,
+            "cov38": null,
+            "cov39": null,
+            "cov44": 8.059166416585279e-08,
+            "cov45": 2.159763222327566e-07,
+            "cov46": null,
+            "cov47": null,
+            "cov48": null,
+            "cov49": null,
+            "cov55": 1.033075503063729e-06,
+            "cov56": null,
+            "cov57": null,
+            "cov58": null,
+            "cov59": null,
+            "cov66": null,
+            "cov67": null,
+            "cov68": null,
+            "cov69": null,
+            "cov77": null,
+            "cov78": null,
+            "cov79": null,
+            "cov88": null,
+            "cov89": null,
+            "cov99": null
+          },
+          "eigenvalues": [
+            4.74173e-09,
+            5.58323e-07,
+            5.91839e-07,
+            8.59318e-07,
+            4.58084e-06,
+            0.00101641
+          ]
+        },
+        "categorization": {
+          "object_type_int": 0,
+          "object_type_str": "Minor Planet",
+          "orbit_subtype_int": null,
+          "orbit_subtype_str": "",
+          "orbit_type_int": 11,
+          "orbit_type_str": "Main Belt"
+        },
+        "designation_data": {
+          "designation_count": 1,
+          "iau_name": "",
+          "name": "Ceres",
+          "new_style_packed_secondary_provisional_designations": [
+            "I99O00000F",
+            "J43X00000B"
+          ],
+          "orbfit_name": "1",
+          "packed_primary_provisional_designation": "I01A00A",
+          "packed_secondary_provisional_designations": [
+            "I99O00F",
+            "J43X00B"
+          ],
+          "permid": "1",
+          "unpacked_primary_provisional_designation": "A801 AA",
+          "unpacked_secondary_provisional_designations": [
+            "1943 XB",
+            "A899 OF"
+          ]
+        },
+        "epoch_data": {
+          "epoch": 61000.0,
+          "timeform": "MJD",
+          "timesystem": "TDT"
+        },
+        "magnitude_data": {
+          "G": 0.15,
+          "G1": null,
+          "G12": null,
+          "G2": null,
+          "H": 3.341,
+          "photometric_model": "????"
+        },
+        "moid_data": {
+          "Earth": 1.58622,
+          "Jupiter": null,
+          "Mars": null,
+          "Venus": null
+        },
+        "non_grav_booleans": {
+          "non_grav_coefficients": {
+            "A1": false,
+            "A2": false,
+            "A3": false,
+            "DT": false,
+            "srp": false,
+            "yarkovski": false
+          },
+          "non_grav_model": {
+            "marsden": false,
+            "srp": false,
+            "yabushita": false,
+            "yarkovski": false,
+            "yc": false
+          },
+          "non_gravs": false
+        },
+        "orbit_fit_statistics": {
+          "U_param": 0,
+          "arc_length_sel": "1801-2026",
+          "arc_length_total": "1801-2026",
+          "nobs_optical": 7938,
+          "nobs_optical_sel": 7297,
+          "nobs_radar": 0,
+          "nobs_radar_sel": 0,
+          "nobs_total": 7938,
+          "nobs_total_sel": 7297,
+          "nopp": 126,
+          "normalized_RMS": 0.826132,
+          "not_normalized_RMS": null,
+          "numparams": 6,
+          "orbit_quality": "good",
+          "score1": 0.0,
+          "score2": 0.0,
+          "sig_to_noise_ratio": [
+            2123077.335566995,
+            843468.6391301169,
+            270879.9887534023,
+            1238524.109881726,
+            2214105.33922797,
+            197911.21859058502
+          ],
+          "snr_below_1": false,
+          "snr_below_3": false
+        },
+        "software_data": {
+          "fitting_datetime": "2026-04-13 13:40:55",
+          "fitting_software_name": "orbfit",
+          "fitting_software_version": "1.0",
+          "mpcorb_creation_datetime": "2026-04-13 13:41:15",
+          "mpcorb_version": "0.4"
+        },
+        "system_data": {
+          "EclipticObliquityArcseconds": "84381.448",
+          "eph": "DE431",
+          "force_model": "????",
+          "refframe": "ICRF",
+          "refsys": "Ecliptic"
+        }
+      }
+    ],
+    "rwo": [],
+    "rwo_dict": []
+  },
+  200
+]

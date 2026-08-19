@@ -1,0 +1,234 @@
+{
+  "@odata.context": "$metadata#Products(Attributes())",
+  "@odata.nextLink": "https://catalogue.dataspace.copernicus.eu/odata/v1/Products?%24filter=Collection%2FName%20eq%20%27SENTINEL-2%27&%24expand=Attributes&%24top=2&%24skip=2",
+  "value": [
+    {
+      "@odata.mediaContentType": "application/octet-stream",
+      "Id": "0d765421-4ead-4bc1-8da9-4012627f7f1e",
+      "Name": "S2B_MSIL2A_20260816T184919_N0512_R113_T10UGV_20260816T224133.SAFE",
+      "ContentType": "application/octet-stream",
+      "ContentLength": 773758174,
+      "OriginDate": "2026-08-16T23:28:00.000000Z",
+      "PublicationDate": "2026-08-16T23:32:29.447345Z",
+      "ModificationDate": "2026-08-16T23:32:29.447345Z",
+      "Online": true,
+      "EvictionDate": "9999-12-31T23:59:59.999999Z",
+      "S3Path": "/eodata/Sentinel-2/MSI/L2A/2026/08/16/S2B_MSIL2A_20260816T184919_N0512_R113_T10UGV_20260816T224133.SAFE",
+      "ContentDate": {
+        "Start": "2026-08-16T18:49:19.024000Z",
+        "End": "2026-08-16T18:49:19.024000Z"
+      },
+      "Footprint": "geography'SRID=4326;POLYGON ((-119.98693282349018 48.624057292276994, -118.79901938142159 48.5883487810417, -118.7149543...))",
+      "GeoFootprint": {
+        "type": "Polygon",
+        "coordinates": "<trimmed for fixture>"
+      },
+      "Attributes": [
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "origin",
+          "Value": "ESA",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "tileId",
+          "Value": "10UGV",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.DoubleAttribute",
+          "Name": "cloudCover",
+          "Value": 64.217979,
+          "ValueType": "Double"
+        },
+        {
+          "@odata.type": "#OData.CSC.IntegerAttribute",
+          "Name": "orbitNumber",
+          "Value": 49331,
+          "ValueType": "Integer"
+        },
+        {
+          "@odata.type": "#OData.CSC.DateTimeOffsetAttribute",
+          "Name": "processingDate",
+          "Value": "2026-08-16T22:41:33.000000Z",
+          "ValueType": "DateTimeOffset"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "operationalMode",
+          "Value": "INS-NOBS",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "processingLevel",
+          "Value": "S2MSI2A",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "processorVersion",
+          "Value": "05.12",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "platformShortName",
+          "Value": "SENTINEL-2",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "instrumentShortName",
+          "Value": "MSI",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.IntegerAttribute",
+          "Name": "relativeOrbitNumber",
+          "Value": 113,
+          "ValueType": "Integer"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "platformSerialIdentifier",
+          "Value": "B",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "productType",
+          "Value": "S2MSI2A",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.DateTimeOffsetAttribute",
+          "Name": "beginningDateTime",
+          "Value": "2026-08-16T18:49:19.024000Z",
+          "ValueType": "DateTimeOffset"
+        },
+        {
+          "@odata.type": "#OData.CSC.DateTimeOffsetAttribute",
+          "Name": "endingDateTime",
+          "Value": "2026-08-16T18:49:19.024000Z",
+          "ValueType": "DateTimeOffset"
+        }
+      ]
+    },
+    {
+      "@odata.mediaContentType": "application/octet-stream",
+      "Id": "77d74bfb-6fe7-472b-807d-6f9d96da3bd5",
+      "Name": "S2B_MSIL2A_20260817T195849_N0512_R128_T09VVF_20260817T232941.SAFE",
+      "ContentType": "application/octet-stream",
+      "ContentLength": 783398901,
+      "OriginDate": "2026-08-18T00:03:14.000000Z",
+      "PublicationDate": "2026-08-18T00:07:35.547919Z",
+      "ModificationDate": "2026-08-18T00:07:35.547919Z",
+      "Online": true,
+      "EvictionDate": "9999-12-31T23:59:59.999999Z",
+      "S3Path": "/eodata/Sentinel-2/MSI/L2A/2026/08/17/S2B_MSIL2A_20260817T195849_N0512_R128_T09VVF_20260817T232941.SAFE",
+      "ContentDate": {
+        "Start": "2026-08-17T19:58:49.024000Z",
+        "End": "2026-08-17T19:58:49.024000Z"
+      },
+      "Footprint": "geography'SRID=4326;POLYGON ((-130.76847208052328 59.52639875303964, -130.7185624545036 58.54078550591164, -128.83229232...))",
+      "GeoFootprint": {
+        "type": "Polygon",
+        "coordinates": "<trimmed for fixture>"
+      },
+      "Attributes": [
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "origin",
+          "Value": "ESA",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "tileId",
+          "Value": "09VVF",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.DoubleAttribute",
+          "Name": "cloudCover",
+          "Value": 99.978608,
+          "ValueType": "Double"
+        },
+        {
+          "@odata.type": "#OData.CSC.IntegerAttribute",
+          "Name": "orbitNumber",
+          "Value": 49346,
+          "ValueType": "Integer"
+        },
+        {
+          "@odata.type": "#OData.CSC.DateTimeOffsetAttribute",
+          "Name": "processingDate",
+          "Value": "2026-08-17T23:29:41.000000Z",
+          "ValueType": "DateTimeOffset"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "operationalMode",
+          "Value": "INS-NOBS",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "processingLevel",
+          "Value": "S2MSI2A",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "processorVersion",
+          "Value": "05.12",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "platformShortName",
+          "Value": "SENTINEL-2",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "instrumentShortName",
+          "Value": "MSI",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.IntegerAttribute",
+          "Name": "relativeOrbitNumber",
+          "Value": 128,
+          "ValueType": "Integer"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "platformSerialIdentifier",
+          "Value": "B",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.StringAttribute",
+          "Name": "productType",
+          "Value": "S2MSI2A",
+          "ValueType": "String"
+        },
+        {
+          "@odata.type": "#OData.CSC.DateTimeOffsetAttribute",
+          "Name": "beginningDateTime",
+          "Value": "2026-08-17T19:58:49.024000Z",
+          "ValueType": "DateTimeOffset"
+        },
+        {
+          "@odata.type": "#OData.CSC.DateTimeOffsetAttribute",
+          "Name": "endingDateTime",
+          "Value": "2026-08-17T19:58:49.024000Z",
+          "ValueType": "DateTimeOffset"
+        }
+      ]
+    }
+  ]
+}

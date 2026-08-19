@@ -1,0 +1,26 @@
+HTTP/1.1 200 OK
+Date: Tue, 18 Aug 2026 18:03:42 GMT
+Content-Type: application/json
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept
+Access-Control-Allow-Methods: GET
+Access-Control-Allow-Origin: *
+Access-Control-Max-Age: 3600
+Age: 0
+Nel: {"report_to":"heroku-nel","response_headers":["Via"],"max_age":3600,"success_fraction":0.01,"failure_fraction":0.1}
+Report-To: {"group":"heroku-nel","endpoints":[{"url":"https://nel.heroku.com/reports?s=b8UHkMjNz5cF5IT61nUKUfih2hi5X1jNplyGux3GlJ4%3D\u0026sid=929419e7-33ea-4e2f-85f0-7d8b7cd5cbd6\u0026ts=1787076222"}],"max_age":3600}
+Reporting-Endpoints: heroku-nel="https://nel.heroku.com/reports?s=b8UHkMjNz5cF5IT61nUKUfih2hi5X1jNplyGux3GlJ4%3D&sid=929419e7-33ea-4e2f-85f0-7d8b7cd5cbd6&ts=1787076222"
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+Vary: Accept-Encoding
+Via: 1.1 heroku-router, https/1.1 api-umbrella (ApacheTrafficServer [cMsSf ])
+X-Api-Umbrella-Request-Id: d02o5hq2u82akmt97v40
+X-Cache: MISS
+X-Content-Type-Options: nosniff
+X-Ratelimit-Limit: 10
+X-Ratelimit-Remaining: 9
+X-Vcap-Request-Id: 0a7cd80e-fb2a-4ae9-6745-22e5277d1ce5
+X-Xss-Protection: 0
+X-Frame-Options: DENY
+
