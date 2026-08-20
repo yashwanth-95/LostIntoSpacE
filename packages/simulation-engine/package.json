@@ -12,7 +12,8 @@
     "./sim": "./src/sim/index.ts",
     "./renderer": "./src/renderer/index.ts",
     "./adapters": "./src/adapters/index.ts",
-    "./integration": "./src/integration/index.ts"
+    "./integration": "./src/integration/index.ts",
+    "./geometry": "./src/geometry/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.headless.json && tsc --noEmit -p tsconfig.test.json",

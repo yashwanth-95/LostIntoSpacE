@@ -50,3 +50,6 @@ export * from './sim/index.js';
 // Layer 4: Integration — serialization and cross-team payloads.
 // Included here because it has no browser dependency either.
 export * from './integration/index.js';
+
+// Parametric geometry: the shapes the builder draws and the physics flies.
+export * from './geometry/index.js';
