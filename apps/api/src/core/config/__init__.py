@@ -28,8 +28,10 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
 
-    # CORS - comma-separated list of allowed origins
-    cors_origins: str = "http://localhost:5173"
+    # CORS - comma-separated list of allowed origins.
+    # 3000 is the port apps/web/vite.config.ts serves on; the previous 5173
+    # default named Vite's stock port, which this project does not use.
+    cors_origins: str = "http://localhost:3000"
 
     # Database. The URL always comes from the environment; this default points at
     # a local development database and contains no real credentials.
