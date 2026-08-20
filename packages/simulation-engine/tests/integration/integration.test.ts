@@ -10,7 +10,10 @@ import {
   serializeRkt,
   parseRkt,
   findMissingComponents,
-  RKT_VERSION,
+  RKT_SCHEMA_VERSION,
+  buildRktProject,
+  computeInputsHash,
+  areResultsStale,
   RKT_MAX_BYTES,
 } from '../../src/integration/rkt.js';
 import {
@@ -168,55 +171,213 @@ describe('checkSchemaCompatibility', () => {
   });
 });
 
-describe('.rkt serialization', () => {
+describe('.rkt v2 — round trip', () => {
+  function project() {
+    return buildRktProject({
+      design,
+      mission,
+      registry,
+      metadata: { author: 'Test Author' },
+      now: '2026-01-01T00:00:00.000Z',
+    });
+  }
+
   it('round-trips a project', () => {
-    const json = serializeRkt(design, mission, { author: 'Test Author' });
-    const parsed = parseRkt(json);
+    const parsed = parseRkt(serializeRkt(project()));
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
 
-    expect(parsed.file.rkt_version).toBe(RKT_VERSION);
-    expect(parsed.file.project.author).toBe('Test Author');
-    expect(parsed.file.design.name).toBe(design.name);
-    expect(parsed.file.design.components).toHaveLength(design.components.length);
-    expect(parsed.file.mission.launchSite.latitude_deg).toBeCloseTo(
+    expect(parsed.project.metadata.schemaVersion).toBe(RKT_SCHEMA_VERSION);
+    expect(parsed.project.metadata.author).toBe('Test Author');
+    expect(parsed.project.design.name).toBe(design.name);
+    expect(parsed.project.design.components).toHaveLength(design.components.length);
+    expect(parsed.project.missionConfig.launchSite.latitude_deg).toBeCloseTo(
       mission.launchSite.latitude_deg,
       6,
     );
   });
 
+  it('derives the engineering view rather than asking the user to maintain it', () => {
+    const built = project();
+    expect(built.vehicle.stages).toHaveLength(design.stages.length);
+    expect(built.vehicle.components).toHaveLength(design.components.length);
+    expect(built.vehicle.mass.launch_kg).toBeCloseTo(analysis.totalWetMass_kg, 6);
+    expect(built.aerodynamics.stabilityParameters.staticMarginWet_cal).toBeCloseTo(
+      analysis.stabilityWet.stabilityMargin_cal,
+      6,
+    );
+    expect(built.propulsion.motors.length).toBeGreaterThan(0);
+  });
+
   it('preserves configuration overrides through the round trip', () => {
-    const json = serializeRkt(design, mission);
-    const parsed = parseRkt(json);
+    const parsed = parseRkt(serializeRkt(project()));
     if (!parsed.ok) throw new Error('parse failed');
 
-    const original = design.components.find(
-      c => Object.keys(c.configOverrides).length > 0,
-    )!;
-    const restored = parsed.file.design.components.find(
+    const original = design.components.find(c => Object.keys(c.configOverrides).length > 0)!;
+    const restored = parsed.project.design.components.find(
       c => c.instanceId === original.instanceId,
     )!;
     expect(restored.configOverrides).toEqual(original.configOverrides);
   });
 
   it('produces a design the builder can still analyse', () => {
-    const json = serializeRkt(design, mission);
-    const parsed = parseRkt(json);
+    const parsed = parseRkt(serializeRkt(project()));
     if (!parsed.ok) throw new Error('parse failed');
 
-    const restored = analyzeRocket(parsed.file.design, registry);
+    const restored = analyzeRocket(parsed.project.design, registry);
     expect(restored.totalWetMass_kg).toBeCloseTo(analysis.totalWetMass_kg, 6);
     expect(restored.totalDeltaV_ms).toBeCloseTo(analysis.totalDeltaV_ms, 6);
   });
 });
 
-describe('.rkt parsing — untrusted input', () => {
+describe('.rkt v2 — results and staleness', () => {
+  function withResults() {
+    const base = buildRktProject({ design, mission, registry, now: '2026-01-01T00:00:00.000Z' });
+    const results = {
+      ...base.results,
+      hasResults: true,
+      ranAt: '2026-01-01T00:05:00.000Z',
+      engineVersion: '0.2.0',
+      outcome: 'success',
+      inputsHash: computeInputsHash(base),
+      telemetry: { channels: ['t', 'altitude_m'], rows: [[0, 0], [1, 12.4]] },
+    };
+    return { ...base, results };
+  }
+
+  it('results produced from the current inputs are not stale', () => {
+    expect(areResultsStale(withResults())).toBe(false);
+  });
+
+  it('editing the vehicle makes stored results stale', () => {
+    // The property the whole design-versus-results split exists for.
+    const stale = withResults();
+    const edited = {
+      ...stale,
+      design: { ...stale.design, name: stale.design.name, components: stale.design.components.slice(1) },
+    };
+    expect(areResultsStale(edited)).toBe(true);
+  });
+
+  it('hashing does not depend on key order', () => {
+    const built = withResults();
+    const reordered = {
+      ...built,
+      // Same content, different insertion order.
+      environment: {
+        simulationConditions: built.environment.simulationConditions,
+        gravity: built.environment.gravity,
+        weather: built.environment.weather,
+        atmosphere: built.environment.atmosphere,
+      },
+    };
+    expect(computeInputsHash(reordered)).toBe(computeInputsHash(built));
+  });
+
+  it('renaming a project does not invalidate its results', () => {
+    const built = withResults();
+    const renamed = {
+      ...built,
+      metadata: { ...built.metadata, name: 'A completely different name' },
+    };
+    expect(areResultsStale(renamed)).toBe(false);
+  });
+
+  it('warns when a reopened project carries stale results', () => {
+    const built = withResults();
+    const tampered = JSON.parse(serializeRkt(built));
+    tampered.results.inputsHash = 'hnotthehash';
+    const parsed = parseRkt(JSON.stringify(tampered));
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.warnings.some(w => /stale/i.test(w.message))).toBe(true);
+  });
+
+  it('round-trips telemetry as columns rather than as objects', () => {
+    const parsed = parseRkt(serializeRkt(withResults()));
+    if (!parsed.ok) throw new Error('parse failed');
+    expect(parsed.project.results.telemetry.channels).toEqual(['t', 'altitude_m']);
+    expect(parsed.project.results.telemetry.rows[1]).toEqual([1, 12.4]);
+  });
+
+  it('rejects telemetry whose rows do not match its channels', () => {
+    const built = JSON.parse(serializeRkt(withResults()));
+    built.results.telemetry.rows = [[0, 0, 0]];
+    const parsed = parseRkt(JSON.stringify(built));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.some(e => /channels/i.test(e.message))).toBe(true);
+  });
+});
+
+describe('.rkt v2 — versioning and migration', () => {
+  it('migrates a version 1 file forward', () => {
+    // The shape v1 wrote: flat, with rkt_version at the top level.
+    const v1 = JSON.stringify({
+      rkt_version: '1.0',
+      generator: '@lostintospace/simulation-engine 0.1.0',
+      created_at: '2025-06-01T00:00:00.000Z',
+      updated_at: '2025-06-01T00:00:00.000Z',
+      project: { name: 'Legacy Rocket', description: 'from v1', author: 'Someone' },
+      mission,
+      design,
+      simulation_settings: {},
+      educational_metadata: { difficulty: 'beginner', concepts_covered: [], related_lessons: [] },
+    });
+
+    const parsed = parseRkt(v1);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    expect(parsed.project.metadata.schemaVersion).toBe(RKT_SCHEMA_VERSION);
+    expect(parsed.project.metadata.name).toBe('Legacy Rocket');
+    expect(parsed.project.metadata.author).toBe('Someone');
+    expect(parsed.project.design.components).toHaveLength(design.components.length);
+    // The user is told their file was upgraded rather than it happening silently.
+    expect(parsed.warnings.some(w => w.path === 'metadata.schemaVersion')).toBe(true);
+  });
+
+  it('a migrated v1 file claims no results, because it had none', () => {
+    const v1 = JSON.stringify({
+      rkt_version: '1.0',
+      project: { name: 'Legacy', description: '', author: '' },
+      mission,
+      design,
+    });
+    const parsed = parseRkt(v1);
+    if (!parsed.ok) throw new Error('parse failed');
+    expect(parsed.project.results.hasResults).toBe(false);
+  });
+
+  it('refuses a file from a newer build rather than dropping what it cannot read', () => {
+    const built = JSON.parse(serializeRkt(buildRktProject({ design, mission, registry })));
+    built.metadata.schemaVersion = 99;
+    const parsed = parseRkt(JSON.stringify(built));
+
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors[0]!.path).toBe('metadata.schemaVersion');
+    expect(parsed.errors[0]!.message).toMatch(/newer version/i);
+  });
+
+  it('refuses a schema version older than the migration chain reaches', () => {
+    const built = JSON.parse(serializeRkt(buildRktProject({ design, mission, registry })));
+    built.metadata.schemaVersion = 0;
+    const parsed = parseRkt(JSON.stringify(built));
+    expect(parsed.ok).toBe(false);
+  });
+});
+
+describe('.rkt v2 — untrusted input', () => {
+  const good = () => serializeRkt(buildRktProject({ design, mission, registry }));
+
   it('rejects malformed JSON without throwing', () => {
     const parsed = parseRkt('{ not json at all');
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.errors[0]!.message).toMatch(/not valid json/i);
+    expect(parsed.errors[0]!.message).toMatch(/not a valid project file/i);
   });
 
   it('rejects a file above the size limit before parsing it', () => {
@@ -224,76 +385,135 @@ describe('.rkt parsing — untrusted input', () => {
     const parsed = parseRkt(huge);
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.errors[0]!.message).toMatch(/byte limit/i);
+    expect(parsed.errors[0]!.message).toMatch(/limit/i);
   });
 
-  it('rejects an unsupported format version', () => {
-    const json = serializeRkt(design, mission).replace('"1.0"', '"99.0"');
-    const parsed = parseRkt(json);
-    expect(parsed.ok).toBe(false);
-    if (parsed.ok) return;
-    expect(parsed.errors.some(e => e.path === 'rkt_version')).toBe(true);
-  });
-
-  it('rejects a design with no stages', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
-    file.design.stages = [];
+  it('rejects a document nested past the depth limit', () => {
+    // A deeply nested document must not be able to exhaust the stack during
+    // validation.
+    let nested: unknown = { end: true };
+    for (let i = 0; i < 60; i += 1) nested = { nested };
+    const file = JSON.parse(good());
+    file.assets.customAssets = [nested];
     const parsed = parseRkt(JSON.stringify(file));
     expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors[0]!.message).toMatch(/nests/i);
+  });
+
+  it('rejects a non-object document', () => {
+    expect(parseRkt('[1,2,3]').ok).toBe(false);
+    expect(parseRkt('"just a string"').ok).toBe(false);
   });
 
   it('rejects an out-of-range latitude', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
-    file.mission.launchSite.latitude_deg = 500;
+    const file = JSON.parse(good());
+    file.missionConfig.launchSite.latitude_deg = 500;
     const parsed = parseRkt(JSON.stringify(file));
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
     expect(parsed.errors.some(e => e.path.includes('latitude'))).toBe(true);
   });
 
-  it('rejects a non-numeric mass where a number belongs', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
+  it('rejects a temperature that is not a temperature', () => {
+    // 5,000 K at the pad is a Celsius/kelvin mix-up or a decimal slip, and
+    // either way the flight it produces would be meaningless.
+    const file = JSON.parse(good());
+    file.missionConfig.environment.temperature_K = 5_000;
+    const parsed = parseRkt(JSON.stringify(file));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.some(e => e.path === 'mission.environment.temperature_K')).toBe(true);
+  });
+
+  it('rejects a non-numeric offset where a number belongs', () => {
+    const file = JSON.parse(good());
     file.design.components[0].offset_z = 'not a number';
     const parsed = parseRkt(JSON.stringify(file));
     expect(parsed.ok).toBe(false);
   });
 
+  it('rejects duplicate component identifiers', () => {
+    const file = JSON.parse(good());
+    file.design.components[1].instanceId = file.design.components[0].instanceId;
+    const parsed = parseRkt(JSON.stringify(file));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.some(e => /share the identifier/i.test(e.message))).toBe(true);
+  });
+
+  it('rejects a component assigned to a stage that does not exist', () => {
+    const file = JSON.parse(good());
+    file.design.components[0].stageIndex = 47;
+    const parsed = parseRkt(JSON.stringify(file));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.some(e => /stage 47/i.test(e.message))).toBe(true);
+  });
+
+  it('rejects a reference to a component that is not in the design', () => {
+    const file = JSON.parse(good());
+    file.design.connections = [
+      {
+        id: 'conn-1',
+        fromInstanceId: file.design.components[0].instanceId,
+        toInstanceId: 'BODY-02',
+        fromAttachmentId: 'top',
+        toAttachmentId: 'base',
+        type: 'structural',
+      },
+    ];
+    const parsed = parseRkt(JSON.stringify(file));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.some(e => e.message.includes('BODY-02'))).toBe(true);
+  });
+
   it('discards a non-finite configuration override rather than admitting NaN', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
+    const file = JSON.parse(good());
     file.design.components[0].configOverrides = { mass_kg: 'huge', fillFraction: 0.5 };
     const parsed = parseRkt(JSON.stringify(file));
 
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    // The bad value is dropped; the good one survives.
-    expect(parsed.file.design.components[0]!.configOverrides).toEqual({
-      fillFraction: 0.5,
-    });
+    expect(parsed.project.design.components[0]!.configOverrides).toEqual({ fillFraction: 0.5 });
+    expect(parsed.warnings.some(w => /discarded/i.test(w.message))).toBe(true);
   });
 
   it('caps an over-long string instead of carrying it through', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
-    file.project.name = 'a'.repeat(10_000);
-    const parsed = parseRkt(JSON.stringify(file));
-    expect(parsed.ok).toBe(false);
-  });
-
-  it('drops unknown top-level keys rather than passing them along', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
-    file.__proto__inject = { evil: true };
-    file.arbitrary_key = 'ignored';
-
+    const file = JSON.parse(good());
+    file.metadata.name = 'a'.repeat(50_000);
     const parsed = parseRkt(JSON.stringify(file));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(Object.keys(parsed.file)).not.toContain('arbitrary_key');
+    expect(parsed.project.metadata.name.length).toBeLessThanOrEqual(8_000);
+  });
+
+  it('drops unknown top-level keys rather than passing them along', () => {
+    const file = JSON.parse(good());
+    file.arbitrary_key = 'ignored';
+    const parsed = parseRkt(JSON.stringify(file));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(Object.keys(parsed.project)).not.toContain('arbitrary_key');
+  });
+
+  it('refuses to load an image from an untrusted host', () => {
+    const file = JSON.parse(good());
+    file.assets.images = [
+      { id: 'i1', url: 'https://attacker.example/tracker.png', credit: '', alt: '' },
+    ];
+    const parsed = parseRkt(JSON.stringify(file));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.warnings.some(w => /not a trusted source/i.test(w.message))).toBe(true);
   });
 
   it('reports every problem at once, so the user fixes them together', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
-    file.mission.launchSite.latitude_deg = 500;
-    file.mission.launchSite.longitude_deg = 900;
-    file.rkt_version = '0.1';
+    const file = JSON.parse(good());
+    file.missionConfig.launchSite.latitude_deg = 500;
+    file.missionConfig.launchSite.longitude_deg = 900;
+    file.design.components[0].offset_z = 'not a number';
 
     const parsed = parseRkt(JSON.stringify(file));
     expect(parsed.ok).toBe(false);
@@ -302,8 +522,8 @@ describe('.rkt parsing — untrusted input', () => {
   });
 
   it('names the offending field by path', () => {
-    const file = JSON.parse(serializeRkt(design, mission));
-    file.mission.environment.temperature_K = 5_000;
+    const file = JSON.parse(good());
+    file.missionConfig.environment.temperature_K = 5_000;
     const parsed = parseRkt(JSON.stringify(file));
 
     expect(parsed.ok).toBe(false);
@@ -313,20 +533,21 @@ describe('.rkt parsing — untrusted input', () => {
 });
 
 describe('findMissingComponents', () => {
-  it('finds nothing missing against the full catalogue', () => {
-    const parsed = parseRkt(serializeRkt(design, mission));
+  const parsedProject = () => {
+    const parsed = parseRkt(serializeRkt(buildRktProject({ design, mission, registry })));
     if (!parsed.ok) throw new Error('parse failed');
-    expect(findMissingComponents(parsed.file, registry.listIds())).toEqual([]);
+    return parsed.project;
+  };
+
+  it('finds nothing missing against the full catalogue', () => {
+    expect(findMissingComponents(parsedProject(), registry.listIds())).toEqual([]);
   });
 
   it('names the parts a partial catalogue lacks', () => {
-    const parsed = parseRkt(serializeRkt(design, mission));
-    if (!parsed.ok) throw new Error('parse failed');
-
     // Loading against a catalogue missing a part would otherwise silently
     // produce a lighter, weaker rocket than the author designed.
     const partial = registry.listIds().filter(id => id !== 'engine_s_solid');
-    expect(findMissingComponents(parsed.file, partial)).toEqual(['engine_s_solid']);
+    expect(findMissingComponents(parsedProject(), partial)).toEqual(['engine_s_solid']);
   });
 });
 
