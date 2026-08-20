@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.core.envelope import error_envelope
@@ -50,6 +51,38 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     )
 
 
+async def database_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+    """An unreachable database is 503, not 500.
+
+    500 tells a client "this server has a bug"; an unconfigured or unreachable
+    PostgreSQL is neither the client's fault nor a defect in the code, and
+    /health/ready already reports exactly this condition as 503. Without this
+    handler the two disagreed: readiness said "not ready" while every data
+    endpoint said "internal error", which sends anyone debugging a fresh
+    checkout looking for a bug that is not there.
+
+    Scoped to connection-level SQLAlchemy errors only. OperationalError and
+    InterfaceError mean "could not talk to the database"; a ProgrammingError or
+    IntegrityError means the query itself was wrong, which *is* a server bug and
+    must keep its 500.
+
+    The exception text is deliberately never echoed - asyncpg puts the user and
+    connection details in it.
+    """
+    logger.error(
+        "Database unavailable",
+        exc_info=exc,
+        extra={"request_id": _request_id(request)},
+    )
+    return JSONResponse(
+        status_code=503,
+        content=error_envelope(
+            "DATABASE_UNAVAILABLE",
+            "The database is not reachable. See docs/getting-started/LOCAL_SETUP.md.",
+        ),
+    )
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.error(
         "Unhandled exception",
@@ -69,4 +102,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
+    # Registered before the catch-all so a connection failure resolves to 503
+    # rather than being swallowed by the generic Exception handler.
+    app.add_exception_handler(OperationalError, database_unavailable_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(InterfaceError, database_unavailable_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)

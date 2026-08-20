@@ -2,21 +2,46 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
 
-const navItems = [
-  { path: '/', label: 'Home', icon: HomeIcon },
-  { path: '/explore', label: 'Explore Space', icon: GlobeIcon },
-  { path: '/learn', label: 'Learn', icon: BookIcon },
-  { path: '/rocket-lab', label: 'Rocket Lab', icon: BeakerIcon },
-  { path: '/builder', label: 'Rocket Builder', icon: WrenchIcon },
-  { path: '/simulator', label: 'Simulator', icon: PlayIcon },
-  { path: '/missions', label: 'Missions', icon: FlagIcon },
-  { path: '/projects', label: 'Projects', icon: FolderIcon },
-  { path: '/assistant', label: 'AI Assistant', icon: SparklesIcon },
-  { path: '/search', label: 'Search', icon: SearchIcon },
+/**
+ * Navigation, grouped by what the user is doing rather than by which team
+ * built it. The order follows the product loop the platform is built around:
+ * explore, learn, build, launch, watch, understand.
+ *
+ * "Rocket Builder" and "Launch" are separate entries even though Launch is
+ * reached from the Builder, because someone returning to a saved design wants
+ * to go straight to flying it.
+ */
+const navGroups = [
+  {
+    label: 'Discover',
+    items: [
+      { path: '/explore', label: 'Explore Space', icon: GlobeIcon },
+      { path: '/catalog', label: 'Catalog', icon: FolderIcon },
+      { path: '/missions', label: 'Missions', icon: FlagIcon },
+      { path: '/learn', label: 'Learn', icon: BookIcon },
+    ],
+  },
+  {
+    label: 'Engineer',
+    items: [
+      { path: '/rocket-lab', label: 'Rocket Lab', icon: BeakerIcon },
+      { path: '/builder', label: 'Rocket Builder', icon: WrenchIcon },
+      { path: '/launch', label: 'Launch', icon: PlayIcon },
+      { path: '/mission-control', label: 'Mission Control', icon: GaugeIcon },
+    ],
+  },
+  {
+    label: 'Assist',
+    items: [
+      { path: '/assistant', label: 'AI Assistant', icon: SparklesIcon },
+      { path: '/search', label: 'Search', icon: SearchIcon },
+    ],
+  },
 ] as const;
 
 const bottomItems = [
-  { path: '/settings', label: 'Settings', icon: GearIcon },
+  { path: '/workspace', label: 'Workspace', icon: FolderIcon },
+  { path: '/help', label: 'Help', icon: HelpIcon },
 ] as const;
 
 export function Sidebar() {
@@ -30,8 +55,11 @@ export function Sidebar() {
         collapsed ? 'w-16' : 'w-56',
       )}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 h-14 border-b border-space-800 shrink-0">
+      {/* Logo — also the way back to the landing page */}
+      <NavLink
+        to="/"
+        className="flex items-center gap-3 px-4 h-14 border-b border-space-800 shrink-0 focus-ring"
+      >
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-cyan to-accent-blue flex items-center justify-center shrink-0">
           <span className="text-sm font-bold text-white">L</span>
         </div>
@@ -40,41 +68,48 @@ export function Sidebar() {
             LostIntoSpace
           </span>
         )}
-      </div>
+      </NavLink>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 no-scrollbar">
-        <ul className="space-y-0.5">
-          {navItems.map((item) => (
-            <li key={item.path}>
-              <NavLink
-                to={item.path}
-                end={item.path === '/'}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors group',
-                    isActive
-                      ? 'bg-accent-cyan/10 text-accent-cyan'
-                      : 'text-space-400 hover:text-space-100 hover:bg-space-800',
-                    collapsed && 'justify-center px-0',
-                  )
-                }
-                title={collapsed ? item.label : undefined}
-              >
-                <item.icon
-                  className={cn(
-                    'w-[18px] h-[18px] shrink-0',
-                    location.pathname === item.path ||
-                      (item.path !== '/' && location.pathname.startsWith(item.path))
-                      ? 'text-accent-cyan'
-                      : 'text-space-500 group-hover:text-space-300',
-                  )}
-                />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+      <nav className="flex-1 overflow-y-auto py-3 px-2 no-scrollbar" aria-label="Main">
+        {navGroups.map((group) => (
+          <div key={group.label} className="mb-4">
+            {!collapsed && (
+              <p className="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-space-600">
+                {group.label}
+              </p>
+            )}
+            <ul className="space-y-0.5">
+              {group.items.map((item) => (
+                <li key={item.path}>
+                  <NavLink
+                    to={item.path}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors group focus-ring',
+                        isActive
+                          ? 'bg-accent-cyan/10 text-accent-cyan'
+                          : 'text-space-400 hover:text-space-100 hover:bg-space-800',
+                        collapsed && 'justify-center px-0',
+                      )
+                    }
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <item.icon
+                      className={cn(
+                        'w-[18px] h-[18px] shrink-0',
+                        location.pathname.startsWith(item.path)
+                          ? 'text-accent-cyan'
+                          : 'text-space-500 group-hover:text-space-300',
+                      )}
+                    />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       {/* Bottom */}
@@ -113,10 +148,18 @@ export function Sidebar() {
 
 /* Minimal inline SVG icons to avoid import cost — will be replaced by lucide-react once installed */
 
-function HomeIcon({ className }: { className?: string }) {
+function GaugeIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1118 0M12 12l4.5-3M12 12v.01" />
+    </svg>
+  );
+}
+
+function HelpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
     </svg>
   );
 }
@@ -189,15 +232,6 @@ function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-    </svg>
-  );
-}
-
-function GearIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   );
 }
