@@ -85,9 +85,9 @@ export function buildRktProject(input: BuildRktProjectInput): RktProject {
 
   const project: RktProject = {
     metadata,
-    vehicle: deriveVehicle(design, registry, analysis),
+    vehicle: deriveVehicle(design, analysis),
     propulsion: derivePropulsion(design, registry),
-    aerodynamics: deriveAerodynamics(design, registry, analysis),
+    aerodynamics: deriveAerodynamics(registry, analysis),
     avionics: deriveAvionics(design, registry),
     mission: deriveMission(mission),
     environment: mergeEnvironment(input.environment, mission),
@@ -109,11 +109,7 @@ export function buildRktProject(input: BuildRktProjectInput): RktProject {
 // Derivations
 // ============================================================
 
-function deriveVehicle(
-  design: RocketDesign,
-  registry: ComponentRegistry,
-  analysis: RocketAnalysis,
-): RktVehicle {
+function deriveVehicle(design: RocketDesign, analysis: RocketAnalysis): RktVehicle {
   const components: RktComponent[] = [];
   const materials = new Set<string>();
 
@@ -220,7 +216,7 @@ function deriveVehicle(
 function derivePropulsion(design: RocketDesign, registry: ComponentRegistry): RktPropulsion {
   const motors: RktMotor[] = [];
   const thrustProfiles: RktThrustProfile[] = [];
-  const mounts: RktPropulsion['mounts'] = [];
+  const mounts: Array<RktPropulsion['mounts'][number]> = [];
 
   for (const placed of design.components) {
     const def = registry.get(placed.defId);
@@ -275,11 +271,10 @@ function derivePropulsion(design: RocketDesign, registry: ComponentRegistry): Rk
 }
 
 function deriveAerodynamics(
-  design: RocketDesign,
   registry: ComponentRegistry,
   analysis: RocketAnalysis,
 ): RktAerodynamics {
-  const fins: RktAerodynamics['fins'] = [];
+  const fins: Array<RktAerodynamics['fins'][number]> = [];
   let noseCone: RktAerodynamics['noseCone'] = null;
 
   for (const resolved of analysis.layout.components) {
@@ -338,7 +333,7 @@ function deriveAvionics(
   registry: ComponentRegistry,
 ): RktProject['avionics'] {
   let flightComputer: RktProject['avionics']['flightComputer'] = null;
-  const sensors: RktProject['avionics']['sensors'] = [];
+  const sensors: Array<RktProject['avionics']['sensors'][number]> = [];
 
   for (const placed of design.components) {
     const def = registry.get(placed.defId);
