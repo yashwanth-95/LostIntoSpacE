@@ -64,8 +64,12 @@ function twoStageLauncher(): RocketDesign {
   design = addStage(design, 'First Stage');
   design = addStage(design, 'Second Stage');
 
+  // One booster, not two. Two gives a liftoff TWR above 3, which accelerates
+  // the vehicle so hard through dense air that it exceeds its own airframe's
+  // 65 kPa dynamic-pressure limit and breaks up at max-Q around 2.6 km — so a
+  // preset promising orbital insertion delivered a structural failure instead.
+  // Real launchers fly 1.2–1.5 at liftoff for exactly this reason.
   design = stack(design, 0, [
-    'engine_m_booster',
     'engine_m_booster',
     'tank_m_fuel',
     'tank_m_ox',

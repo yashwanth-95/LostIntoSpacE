@@ -296,7 +296,65 @@ step('9. Assistant');
   check('a confidence level is reported', !!answer.body?.data?.confidence, answer.body?.data?.confidence ?? '');
 }
 
-step('10. Guest-mode reachability of the public surface');
+step('10. The shipped presets actually do what their cards claim');
+{
+  // Added after a browser run found the Orbital Launcher preset — advertised as
+  // reaching low Earth orbit — breaking up at max-Q, because it carried two
+  // boosters and lifted off at TWR 3.2. This journey built its own rocket and
+  // so never exercised the presets a user actually clicks. Now it does.
+  const { PRESETS } = await import('../src/lib/presets.ts');
+  const { analyzeRocket } = await import('../../../packages/simulation-engine/src/core/builder.ts');
+  const { vehicleFromAnalysis } = await import('../../../packages/simulation-engine/src/core/vehicle.ts');
+
+  const expectations = {
+    sounding: { targetKm: 30, type: 'suborbital', guidance: 'vertical', reachesOrbit: false },
+    orbital: { targetKm: 200, type: 'leo', guidance: 'pitch_program', reachesOrbit: true },
+    underpowered: { targetKm: 200, type: 'leo', guidance: 'pitch_program', reachesOrbit: false },
+  };
+
+  for (const preset of PRESETS) {
+    const expectation = expectations[preset.id];
+    const design = preset.build();
+    const analysis = analyzeRocket(design, registry);
+    const presetVehicle = vehicleFromAnalysis(analysis, design);
+
+    const run = await post('/simulations/run', {
+      config: missionConfig(presetVehicle, expectation),
+    });
+    const flight = run.body?.data;
+    const failures = (flight?.failures ?? []).map((f) => f.mode_id).join(', ') || 'none';
+
+    if (expectation.reachesOrbit) {
+      check(
+        `preset "${preset.name}" reaches orbit as advertised`,
+        flight?.telemetry?.some((p) => p.in_orbit) === true,
+        `TWR ${analysis.liftoffTWR.toFixed(2)}, apogee ${(
+          (flight?.summary?.max_altitude_m ?? 0) / 1000
+        ).toFixed(0)} km, failures: ${failures}`,
+      );
+    } else {
+      check(
+        `preset "${preset.name}" flies without an unintended structural failure`,
+        !(flight?.failures ?? []).some((f) => f.mode_id === 'MAX_Q_EXCEEDED'),
+        `TWR ${analysis.liftoffTWR.toFixed(2)}, apogee ${(
+          (flight?.summary?.max_altitude_m ?? 0) / 1000
+        ).toFixed(1)} km, failures: ${failures}`,
+      );
+    }
+
+    // A preset that a user is invited to fly should not be flagged by the very
+    // pre-flight advice the Launch page gives, unless being broken is its point.
+    if (preset.id !== 'underpowered') {
+      check(
+        `preset "${preset.name}" passes the liftoff-TWR advisory`,
+        analysis.liftoffTWR >= 1 && analysis.liftoffTWR <= 2.5,
+        `TWR ${analysis.liftoffTWR.toFixed(2)}`,
+      );
+    }
+  }
+}
+
+step('11. Guest-mode reachability of the public surface');
 {
   for (const [label, path] of [
     ['simulation limits', '/simulations/limits'],

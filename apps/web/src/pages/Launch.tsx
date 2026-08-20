@@ -20,6 +20,17 @@ import { cn, formatMass } from '@/lib/utils';
  * is the most useful thing this platform does.
  */
 
+/**
+ * Liftoff thrust-to-weight above which max-Q becomes the limiting risk.
+ *
+ * Real launch vehicles fly 1.2–1.5. Past roughly 2.5 the vehicle is still in
+ * dense air when it gets fast, and dynamic pressure — which grows with the
+ * square of speed — starts to threaten the airframe before the atmosphere
+ * thins out. Advisory, not a hard limit: the vehicle's own rated limit is what
+ * the simulation actually enforces.
+ */
+const MAX_SAFE_LIFTOFF_TWR = 2.5;
+
 export default function Launch() {
   const navigate = useNavigate();
   const design = useMissionStore((s) => s.design);
@@ -57,6 +68,20 @@ export default function Launch() {
         detail: `TWR ${analysis.liftoffTWR.toFixed(2)}${
           analysis.liftoffTWR < 1 ? ' — will not leave the pad' : ''
         }`,
+      },
+      {
+        // Too much thrust is a real failure mode, and a non-obvious one: a
+        // vehicle with a high liftoff TWR reaches high speed while still deep
+        // in dense air, and dynamic pressure grows with the square of speed.
+        // Without this check the pre-flight reported GO on a design that broke
+        // up at max-Q fifteen seconds later, which teaches the wrong lesson.
+        id: 'max-q-risk',
+        label: 'Liftoff TWR is not excessive',
+        pass: analysis.liftoffTWR <= MAX_SAFE_LIFTOFF_TWR,
+        detail:
+          analysis.liftoffTWR > MAX_SAFE_LIFTOFF_TWR
+            ? `TWR ${analysis.liftoffTWR.toFixed(2)} builds speed low in the atmosphere — likely to exceed the airframe's max-Q limit`
+            : `TWR ${analysis.liftoffTWR.toFixed(2)}, within the usual 1.2–1.5 band`,
       },
       {
         id: 'deltav',
