@@ -279,9 +279,9 @@ def _far_future_year(lowered):
     Returns None for a past or near-future year: those are ordinary historical
     or planning questions the corpus may well be able to answer.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    current = datetime.utcnow().year
+    current = datetime.now(timezone.utc).year
     for match in _YEAR.finditer(lowered):
         year = int(match.group(1))
         if year - current > FAR_FUTURE_HORIZON_YEARS:

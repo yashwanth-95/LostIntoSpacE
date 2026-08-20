@@ -208,7 +208,11 @@ class TestAssistantIntegration:
         async def inside():
             return resolver.resolve("Where is the ISS now?", None)
 
-        result = asyncio.get_event_loop().run_until_complete(inside())
+        # asyncio.run (not get_event_loop().run_until_complete) so the test
+        # owns its loop. On Python 3.12 get_event_loop() raises when no loop is
+        # current, which made this pass alone but fail after any earlier test
+        # closed the loop it was implicitly relying on.
+        result = asyncio.run(inside())
         assert result == []
         assert "running event loop" in resolver.last_attempt["reason"]
 

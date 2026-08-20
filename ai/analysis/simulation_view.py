@@ -130,6 +130,30 @@ def _first(payload: Dict[str, Any], keys: Sequence[str]) -> Optional[Any]:
     return None
 
 
+#: Simulation-engine failure ids that mean the same thing as a documented rule
+#: but do not spell it the same way.
+#:
+#: The engine names failures for the *symptom the user configured*
+#: (`INSUFFICIENT_THRUST`, matching the product specification and the text
+#: shown in the UI); the rules here name the *quantity the analysis reasons
+#: about* (`insufficient_twr`). Both namings are defensible and neither should
+#: be bent to the other, so the translation is explicit and lives in one place.
+#:
+#: An engine failure with no entry here is reported as "not one of the
+#: documented rules" rather than being force-fitted to the nearest name —
+#: substring matching once mapped `THERMAL_LIMIT` onto a structural rule, which
+#: is a worse answer than admitting the gap.
+_ENGINE_FAILURE_ALIASES = {
+    "insufficient_thrust": "insufficient_twr",
+    "max_q_exceeded": "excessive_q",
+    "excessive_g_load": "structural_overload",
+    "propellant_depleted": "fuel_exhaustion",
+    "guidance_failure": "trajectory_divergence",
+    "navigation_failure": "trajectory_divergence",
+    "control_failure": "instability",
+}
+
+
 def _rule_key_for(event_type: str) -> Optional[str]:
     """Map an event identifier onto a documented failure rule, or `None`."""
     normalized = str(event_type or "").lower().replace("failure_", "").replace(
@@ -139,6 +163,8 @@ def _rule_key_for(event_type: str) -> Optional[str]:
         return None
     if normalized in FAILURE_RULES:
         return normalized
+    if normalized in _ENGINE_FAILURE_ALIASES:
+        return _ENGINE_FAILURE_ALIASES[normalized]
     for key in FAILURE_RULES:
         if key in normalized or normalized in key:
             return key

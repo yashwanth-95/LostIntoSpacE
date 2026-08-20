@@ -38,6 +38,9 @@ apps/api/__pycache__/
 *.d.ts
 !packages/**/*.d.ts
 
+# TypeScript incremental build state - a build artifact, not source.
+*.tsbuildinfo
+
 # ---------- Testing ----------
 coverage/
 .coverage
