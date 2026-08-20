@@ -1,0 +1,58 @@
+{
+  "success": true,
+  "outcome": "success",
+  "finalState": "SURFACE",
+  "terminationReason": "Vehicle reached the surface",
+  "summary": {
+    "maxAltitude_m": 4329.394289501011,
+    "maxSpeed_ms": 187.39151716230776,
+    "maxAcceleration_g": 2.182100468721792,
+    "maxDynamicPressure_Pa": 21394.044746003863,
+    "maxQAltitude_m": 46.60554727166891,
+    "maxMach": 0.5510194835849483,
+    "flightTime_s": 96.14999999999941,
+    "apogeeTime_s": 61.6499999999994,
+    "maxDownrange_m": 0,
+    "impactSpeed_ms": 187.39151716230776,
+    "stagesSeparated": 0,
+    "propellantUsed_kg": 600.0000000000088,
+    "deltaVAchieved_ms": 187.39151716230776,
+    "deltaVIdeal_ms": 752.2434877286971,
+    "gravityLoss_ms": 256.57990603297435,
+    "dragLoss_ms": 236.85847393892712
+  },
+  "events": [
+    {
+      "t": 0,
+      "type": "ignition"
+    },
+    {
+      "t": 0.5,
+      "type": "stage_ignition"
+    },
+    {
+      "t": 0.5,
+      "type": "liftoff"
+    },
+    {
+      "t": 0.7000000000000002,
+      "type": "tower_clear"
+    },
+    {
+      "t": 48.1499999999994,
+      "type": "meco"
+    },
+    {
+      "t": 48.1499999999994,
+      "type": "max_q"
+    },
+    {
+      "t": 96.14999999999941,
+      "type": "landing"
+    },
+    {
+      "t": 96.14999999999941,
+      "type": "impact"
+    }
+  ]
+}

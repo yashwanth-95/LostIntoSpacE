@@ -206,18 +206,28 @@ class TestDrag:
         assert effective_drag_coefficient(0.5, 0.79) == pytest.approx(0.5)
 
     def test_transonic_bump(self) -> None:
-        """Between 0.8 and 1.2, Cd should be elevated."""
+        """Between 0.8 and 1.2, Cd rises linearly to 2.5x the subsonic value.
+
+        Reference values from machDragFactor in
+        packages/simulation-engine/src/physics/drag.ts — the two engines must
+        agree, because a weaker transonic rise silently understates max-Q.
+        """
         cd_sub = 0.5
-        cd_1 = effective_drag_coefficient(cd_sub, 1.0)
-        assert cd_1 > cd_sub
-        assert cd_1 <= cd_sub * 1.5 + 0.01  # up to ~1.5× the subsonic value
+        assert effective_drag_coefficient(cd_sub, 1.0) == pytest.approx(cd_sub * 1.75)
+        assert effective_drag_coefficient(cd_sub, 1.2) == pytest.approx(cd_sub * 2.5)
 
     def test_supersonic_decay(self) -> None:
-        """Above Mach 1.2, Cd should decay back toward subsonic."""
+        """Above Mach 1.2, Cd decays linearly toward the hypersonic floor."""
         cd_sub = 0.5
         cd_12 = effective_drag_coefficient(cd_sub, 1.2)
         cd_3 = effective_drag_coefficient(cd_sub, 3.0)
         assert cd_3 < cd_12
+
+    def test_hypersonic_floor(self) -> None:
+        """Beyond Mach 5 the multiplier settles at 1.1 and stops falling."""
+        cd_sub = 0.5
+        assert effective_drag_coefficient(cd_sub, 5.0) == pytest.approx(cd_sub * 1.1)
+        assert effective_drag_coefficient(cd_sub, 35.0) == pytest.approx(cd_sub * 1.1)
 
     def test_drag_anti_parallel(self) -> None:
         """Drag force should oppose the velocity vector."""

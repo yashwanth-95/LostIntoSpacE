@@ -12,17 +12,54 @@ import math
 from .gravity import Vec3, magnitude, scale
 
 
+#: Multiplier at the transonic peak, relative to the subsonic coefficient.
+TRANSONIC_PEAK = 2.5
+
+#: Multiplier the curve settles at in the hypersonic regime.
+HYPERSONIC_FLOOR = 1.1
+
+
+def mach_drag_factor(mach: float) -> float:
+    """
+    Mach-dependent multiplier applied to the base (subsonic) drag coefficient.
+
+    Real slender bodies show a sharp transonic drag rise: Cd roughly triples
+    between M 0.8 and M 1.2, then falls away again as the shock system
+    stabilises. Ignoring this makes the simulation understate max-Q and mislead
+    students about why vehicles throttle down through the transonic region.
+
+    This is a **shape-agnostic educational curve**, not wind-tunnel data. It is
+    piecewise-linear in four regions:
+
+    ==============  ==========================================
+    Mach range      Behaviour
+    ==============  ==========================================
+    0 - 0.8         1.0 (incompressible)
+    0.8 - 1.2       rises linearly to the transonic peak (2.5x)
+    1.2 - 5.0       decays linearly toward the hypersonic floor
+    > 5.0           1.1 (hypersonic floor)
+    ==============  ==========================================
+
+    Args:
+        mach: Mach number. Negative values are treated as 0.
+
+    Returns:
+        Multiplier for the base drag coefficient. Dimensionless, >= 1.
+    """
+    m = max(0.0, mach)
+
+    if m < 0.8:
+        return 1.0
+    if m < 1.2:
+        return 1.0 + (TRANSONIC_PEAK - 1.0) * (m - 0.8) / 0.4
+    if m < 5.0:
+        return TRANSONIC_PEAK - (TRANSONIC_PEAK - HYPERSONIC_FLOOR) * (m - 1.2) / 3.8
+    return HYPERSONIC_FLOOR
+
+
 def effective_drag_coefficient(cd_subsonic: float, mach: float) -> float:
     """
     Drag coefficient corrected for the transonic drag rise.
-
-    Below Mach 0.8 the subsonic value is used directly. Between 0.8 and 1.2
-    there is a smooth bump that peaks at about 1.5× the subsonic value.
-    Above Mach 1.2 the coefficient decays back toward the subsonic value.
-
-    This is a simplified model — real transonic drag depends on the vehicle's
-    exact geometry — but it captures the qualitative behaviour that makes
-    max-Q happen where it does.
 
     Args:
         cd_subsonic: Subsonic drag coefficient. Dimensionless.
@@ -31,18 +68,7 @@ def effective_drag_coefficient(cd_subsonic: float, mach: float) -> float:
     Returns:
         Effective drag coefficient. Dimensionless.
     """
-    if mach < 0.8:
-        return cd_subsonic
-
-    if mach < 1.2:
-        # Smooth bump peaking near Mach 1.0.
-        t = (mach - 0.8) / 0.4
-        bump = 0.5 * (1.0 - math.cos(math.pi * t))
-        return cd_subsonic * (1.0 + 0.5 * bump)
-
-    # Supersonic: decays back from 1.5× toward 1.0× over a wide Mach range.
-    decay = max(0.0, 1.0 - (mach - 1.2) / 4.0)
-    return cd_subsonic * (1.0 + 0.5 * decay)
+    return cd_subsonic * mach_drag_factor(mach)
 
 
 def drag_force(

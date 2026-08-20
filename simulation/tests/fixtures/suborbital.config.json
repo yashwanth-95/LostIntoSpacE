@@ -1,0 +1,105 @@
+{
+  "vehicle": {
+    "name": "Vega-S Light",
+    "design_id": "ref-recoverable",
+    "stages": [
+      {
+        "stage_number": 0,
+        "name": "Solid Stage",
+        "dry_mass_kg": 1632,
+        "propellant_mass_kg": 600,
+        "thrust_vacuum_N": 30000,
+        "thrust_sea_level_N": 27000,
+        "isp_vacuum_s": 245,
+        "isp_sea_level_s": 220.5,
+        "mass_flow_rate_kgs": 12.486320975239938,
+        "burn_time_s": 48.052585,
+        "ignition_delay_s": 0,
+        "separation_delay_s": 0.5,
+        "can_fire": true
+      }
+    ],
+    "payload_mass_kg": 1500,
+    "launch_mass_kg": 2232,
+    "length_m": 7.7,
+    "diameter_m": 1.8,
+    "reference_area_m2": 2.5446900494077327,
+    "drag_coefficient": 0.288,
+    "stability_margin_wet_cal": -0.5094939537407129,
+    "stability_margin_dry_cal": 0.0682214514177663,
+    "max_axial_load_N": 400000,
+    "max_dynamic_pressure_Pa": 250000
+  },
+  "mission": {
+    "name": "Hop",
+    "objective": "Reach 30 km",
+    "target": {
+      "type": "suborbital",
+      "target_altitude_km": 30,
+      "inclination_deg": 28
+    },
+    "launch_site": {
+      "name": "Satish Dhawan Space Centre",
+      "latitude_deg": 13.7199,
+      "longitude_deg": 80.2304,
+      "altitude_m": 4
+    },
+    "environment": {
+      "temperature_K": 288.15,
+      "pressure_Pa": 101325,
+      "wind_speed_ms": 0,
+      "wind_direction_deg": 0
+    }
+  },
+  "profile": {
+    "id": "suborbital",
+    "name": "Suborbital Flight",
+    "description": "Launch, coast through apogee, and return to the surface.",
+    "states": {},
+    "success_state": "SURFACE"
+  },
+  "settings": {
+    "max_time_s": 1200,
+    "dt_powered_s": 0.05,
+    "dt_coast_s": 0.5,
+    "integrator": "rk4",
+    "gravity_model": "inverse_square",
+    "atmosphere_model": "us_standard_1976",
+    "telemetry_sample_interval_s": 1,
+    "countdown_s": 3,
+    "use_mach_drag_rise": true,
+    "use_altitude_compensation": true,
+    "max_steps": 2000000
+  },
+  "guidance": {
+    "mode": "vertical",
+    "launch_azimuth_deg": 90,
+    "pitchover_altitude_m": 200,
+    "pitch_program_end_altitude_m": 80000,
+    "final_pitch_deg": 0,
+    "gravity_turn_kick_deg": 12,
+    "gravity_turn_kick_band": 4,
+    "gravity_turn_min_speed_ms": 80,
+    "cutoff_on_target_orbit": false
+  },
+  "failures": {
+    "enabled": true,
+    "detection_enabled": true,
+    "seed": 1,
+    "injections": [],
+    "thresholds": {
+      "max_gload_g": 15,
+      "max_dynamic_pressure_Pa": null,
+      "min_liftoff_twr": 1,
+      "max_atmospheric_speed_ms": 3000,
+      "heating_altitude_ceiling_m": 60000
+    }
+  },
+  "termination": {
+    "on_impact": true,
+    "on_stable_orbit": false,
+    "on_target_altitude": false,
+    "on_fatal_failure": true,
+    "on_mission_complete": true
+  }
+}

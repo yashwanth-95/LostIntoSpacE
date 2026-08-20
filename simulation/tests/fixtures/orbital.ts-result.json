@@ -1,0 +1,78 @@
+{
+  "success": true,
+  "outcome": "success",
+  "finalState": "COMPLETE",
+  "terminationReason": "The mission completed",
+  "summary": {
+    "maxAltitude_m": 209342.3875545105,
+    "maxSpeed_ms": 9697.022945252547,
+    "maxAcceleration_g": 7.768568729489475,
+    "maxDynamicPressure_Pa": 48713.69706844183,
+    "maxQAltitude_m": 10272.48920188006,
+    "maxMach": 35.597442954329786,
+    "flightTime_s": 540.6500000000623,
+    "apogeeTime_s": 316.9500000000381,
+    "maxDownrange_m": 2138552.003844639,
+    "impactSpeed_ms": null,
+    "stagesSeparated": 1,
+    "propellantUsed_kg": 113000.00000001119,
+    "deltaVAchieved_ms": 9697.022945252547,
+    "deltaVIdeal_ms": 11709.65915692384,
+    "gravityLoss_ms": 1412.221217055611,
+    "dragLoss_ms": 38.877572075047176
+  },
+  "events": [
+    {
+      "t": 0,
+      "type": "ignition"
+    },
+    {
+      "t": 0.5,
+      "type": "stage_ignition"
+    },
+    {
+      "t": 0.5,
+      "type": "tower_clear"
+    },
+    {
+      "t": 0.5,
+      "type": "liftoff"
+    },
+    {
+      "t": 35.250000000000135,
+      "type": "supersonic"
+    },
+    {
+      "t": 48.249999999999396,
+      "type": "max_q"
+    },
+    {
+      "t": 122.04999999999521,
+      "type": "meco"
+    },
+    {
+      "t": 122.54999999999521,
+      "type": "staging"
+    },
+    {
+      "t": 127.04999999999521,
+      "type": "stage_ignition"
+    },
+    {
+      "t": 534.1500000000623,
+      "type": "meco"
+    },
+    {
+      "t": 534.6500000000623,
+      "type": "orbit_insertion"
+    },
+    {
+      "t": 540.1500000000623,
+      "type": "payload_deployment"
+    },
+    {
+      "t": 540.6500000000623,
+      "type": "mission_complete"
+    }
+  ]
+}
