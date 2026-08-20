@@ -90,6 +90,7 @@ def get_simulation() -> Any:
     """
     ensure_engine_paths()
     try:
+        from simulation.analysis.evaluation import evaluate_mission  # noqa: F401
         from simulation.contracts import SimConfig, SimResult  # noqa: F401
         from simulation.engine.runner import run_simulation  # noqa: F401
     except ImportError as exc:  # pragma: no cover - depends on the install
@@ -99,6 +100,7 @@ def get_simulation() -> Any:
 
     module = types.SimpleNamespace(
         run_simulation=run_simulation,
+        evaluate_mission=evaluate_mission,
         SimConfig=SimConfig,
         SimResult=SimResult,
     )

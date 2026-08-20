@@ -1,110 +1,178 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
+
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/uiStore';
 
 /**
- * Navigation, grouped by what the user is doing rather than by which team
- * built it. The order follows the product loop the platform is built around:
- * explore, learn, build, launch, watch, understand.
+ * Navigation, structured around the work rather than around the codebase.
  *
- * "Rocket Builder" and "Launch" are separate entries even though Launch is
- * reached from the Builder, because someone returning to a saved design wants
- * to go straight to flying it.
+ * The old structure was a list of features — Explore, Catalog, Rocket Lab,
+ * Builder, Launch, Mission Control, Assistant, Search — which told a newcomer
+ * nothing about what to do or in what order. Worse, Catalog and Explore were
+ * two names for the same data, and Rocket Lab and Builder were two doors into
+ * the same room.
+ *
+ * This is the product's actual journey, and the group headings are verbs
+ * because each one is a thing you *do*:
+ *
+ *   EXPLORE   — look at what is out there
+ *   UNDERSTAND — learn why it behaves that way
+ *   BUILD     — make something
+ *   SIMULATE  — fly it under real conditions
+ *   EVALUATE  — find out what happened and why
+ *
+ * A user can start anywhere, and the ordering says what follows what without
+ * forcing it. Help sits at the bottom with the workspace because it is
+ * infrastructure, not a step.
  */
-const navGroups = [
-  {
-    label: 'Discover',
-    items: [
-      { path: '/explore', label: 'Explore Space', icon: GlobeIcon },
-      { path: '/catalog', label: 'Catalog', icon: FolderIcon },
-      { path: '/missions', label: 'Missions', icon: FlagIcon },
-      { path: '/learn', label: 'Learn', icon: BookIcon },
-    ],
-  },
-  {
-    label: 'Engineer',
-    items: [
-      { path: '/rocket-lab', label: 'Rocket Lab', icon: BeakerIcon },
-      { path: '/builder', label: 'Rocket Builder', icon: WrenchIcon },
-      { path: '/launch', label: 'Launch', icon: PlayIcon },
-      { path: '/mission-control', label: 'Mission Control', icon: GaugeIcon },
-    ],
-  },
-  {
-    label: 'Assist',
-    items: [
-      { path: '/assistant', label: 'AI Assistant', icon: SparklesIcon },
-      { path: '/search', label: 'Search', icon: SearchIcon },
-    ],
-  },
-] as const;
 
-const bottomItems = [
-  { path: '/workspace', label: 'Workspace', icon: FolderIcon },
-  { path: '/help', label: 'Help', icon: HelpIcon },
-] as const;
+interface NavItem {
+  readonly path: string;
+  readonly label: string;
+  readonly hint: string;
+  readonly icon: (props: { className?: string }) => JSX.Element;
+}
+
+interface NavGroup {
+  readonly label: string;
+  readonly items: readonly NavItem[];
+}
+
+const NAV: readonly NavGroup[] = [
+  {
+    label: 'Explore',
+    items: [
+      {
+        path: '/explore',
+        label: 'Space objects',
+        hint: 'Planets, moons, spacecraft and small bodies',
+        icon: GlobeIcon,
+      },
+      {
+        path: '/missions',
+        label: 'Mission library',
+        hint: 'Real flights, and what they found',
+        icon: FlagIcon,
+      },
+    ],
+  },
+  {
+    label: 'Understand',
+    items: [
+      {
+        path: '/learn',
+        label: 'Science',
+        hint: 'Orbital mechanics, propulsion, atmospheric flight',
+        icon: BookIcon,
+      },
+      {
+        path: '/experiments',
+        label: 'Experiments',
+        hint: 'Change one variable and watch what happens',
+        icon: FlaskIcon,
+      },
+    ],
+  },
+  {
+    label: 'Build',
+    items: [
+      {
+        path: '/rocket-lab',
+        label: 'Rocket lab',
+        hint: 'Start from a preset or from nothing',
+        icon: BeakerIcon,
+      },
+      {
+        path: '/builder',
+        label: 'Vehicle assembly',
+        hint: 'Components, staging, stability',
+        icon: WrenchIcon,
+      },
+    ],
+  },
+  {
+    label: 'Simulate',
+    items: [
+      {
+        path: '/launch',
+        label: 'Launch setup',
+        hint: 'Site, weather, target orbit',
+        icon: PadIcon,
+      },
+      {
+        path: '/mission-control',
+        label: 'Flight',
+        hint: 'Trajectory and live telemetry',
+        icon: GaugeIcon,
+      },
+    ],
+  },
+  {
+    label: 'Evaluate',
+    items: [
+      {
+        path: '/evaluation',
+        label: 'Mission report',
+        hint: 'Scores, failures, recommendations',
+        icon: ReportIcon,
+      },
+      {
+        path: '/compare',
+        label: 'Compare designs',
+        hint: 'Two vehicles, side by side',
+        icon: CompareIcon,
+      },
+    ],
+  },
+];
+
+const BOTTOM: readonly NavItem[] = [
+  {
+    path: '/workspace',
+    label: 'Workspace',
+    hint: 'Saved projects and flights',
+    icon: FolderIcon,
+  },
+  {
+    path: '/assistant',
+    label: 'Assistant',
+    hint: 'It can see what you are working on',
+    icon: SparklesIcon,
+  },
+  { path: '/help', label: 'Help desk', hint: 'Documentation and troubleshooting', icon: HelpIcon },
+];
 
 export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
-  const location = useLocation();
+  const toggle = useUIStore((s) => s.toggleSidebar);
 
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 bottom-0 z-40 flex flex-col bg-space-900/95 backdrop-blur-md border-r border-space-800 transition-all duration-200',
-        collapsed ? 'w-16' : 'w-56',
+        'fixed inset-y-0 left-0 z-chrome flex flex-col bg-[color:var(--plane-1)] hairline-r',
+        'transition-[width] duration-settle ease-instrument',
+        collapsed ? 'w-14' : 'w-60',
       )}
     >
-      {/* Logo — also the way back to the landing page */}
       <NavLink
         to="/"
-        className="flex items-center gap-3 px-4 h-14 border-b border-space-800 shrink-0 focus-ring"
+        className="flex h-14 shrink-0 items-center gap-2.5 px-4 hairline-b focus-ring"
+        title="LostIntoSpacE — home"
       >
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-cyan to-accent-blue flex items-center justify-center shrink-0">
-          <span className="text-sm font-bold text-white">L</span>
-        </div>
+        <MarkIcon className="h-5 w-5 shrink-0 text-signal-flame" />
         {!collapsed && (
-          <span className="font-display font-semibold text-sm text-space-100 truncate">
-            LostIntoSpace
-          </span>
+          <span className="font-display text-lg leading-none text-ink-50">LostIntoSpace</span>
         )}
       </NavLink>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 no-scrollbar" aria-label="Main">
-        {navGroups.map((group) => (
+      <nav className="flex-1 overflow-y-auto py-3 no-scrollbar">
+        {NAV.map((group) => (
           <div key={group.label} className="mb-4">
-            {!collapsed && (
-              <p className="px-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-space-600">
-                {group.label}
-              </p>
-            )}
-            <ul className="space-y-0.5">
+            {!collapsed && <p className="px-4 pb-1.5 t-label">{group.label}</p>}
+            <ul>
               {group.items.map((item) => (
                 <li key={item.path}>
-                  <NavLink
-                    to={item.path}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors group focus-ring',
-                        isActive
-                          ? 'bg-accent-cyan/10 text-accent-cyan'
-                          : 'text-space-400 hover:text-space-100 hover:bg-space-800',
-                        collapsed && 'justify-center px-0',
-                      )
-                    }
-                    title={collapsed ? item.label : undefined}
-                  >
-                    <item.icon
-                      className={cn(
-                        'w-[18px] h-[18px] shrink-0',
-                        location.pathname.startsWith(item.path)
-                          ? 'text-accent-cyan'
-                          : 'text-space-500 group-hover:text-space-300',
-                      )}
-                    />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </NavLink>
+                  <NavItemLink item={item} collapsed={collapsed} />
                 </li>
               ))}
             </ul>
@@ -112,126 +180,223 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom */}
-      <div className="border-t border-space-800 py-2 px-2">
-        {bottomItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                isActive ? 'bg-accent-cyan/10 text-accent-cyan' : 'text-space-400 hover:text-space-100 hover:bg-space-800',
-                collapsed && 'justify-center px-0',
-              )
-            }
-          >
-            <item.icon className="w-[18px] h-[18px] shrink-0 text-space-500" />
-            {!collapsed && <span>{item.label}</span>}
-          </NavLink>
-        ))}
+      <div className="shrink-0 hairline-t py-2">
+        <ul>
+          {BOTTOM.map((item) => (
+            <li key={item.path}>
+              <NavItemLink item={item} collapsed={collapsed} />
+            </li>
+          ))}
+        </ul>
 
         <button
-          onClick={() => useUIStore.getState().setSidebarCollapsed(!collapsed)}
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-space-500 hover:text-space-300 transition-colors w-full"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={toggle}
+          className={cn(
+            'mt-1 flex w-full items-center gap-3 px-4 py-2 text-ink-600',
+            'transition-colors duration-quick hover:text-ink-300 focus-ring',
+          )}
+          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         >
-          <svg className={cn('w-[18px] h-[18px] transition-transform', collapsed && 'rotate-180')} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
-          {!collapsed && <span>Collapse</span>}
+          <ChevronIcon className={cn('h-4 w-4 shrink-0 transition-transform', collapsed && 'rotate-180')} />
+          {!collapsed && (
+            <span className="font-condensed text-micro uppercase tracking-instrument">
+              Collapse
+            </span>
+          )}
         </button>
       </div>
     </aside>
   );
 }
 
-/* Minimal inline SVG icons to avoid import cost — will be replaced by lucide-react once installed */
-
-function GaugeIcon({ className }: { className?: string }) {
+/**
+ * One navigation entry.
+ *
+ * The active state is a flame-coloured left edge rather than a filled pill —
+ * a marker on a rail, matching how the rest of the interface indicates state.
+ */
+function NavItemLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+  const Icon = item.icon;
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1118 0M12 12l4.5-3M12 12v.01" />
+    <NavLink
+      to={item.path}
+      title={collapsed ? `${item.label} — ${item.hint}` : item.hint}
+      className={({ isActive }) =>
+        cn(
+          'group relative flex items-center gap-3 px-4 py-2',
+          'transition-colors duration-quick ease-instrument focus-ring',
+          isActive ? 'text-ink-50' : 'text-ink-400 hover:text-ink-100',
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span
+            className={cn(
+              'absolute inset-y-1 left-0 w-[2px] transition-colors duration-quick',
+              isActive ? 'bg-signal-flame' : 'bg-transparent group-hover:bg-ink-700',
+            )}
+            aria-hidden="true"
+          />
+          <Icon className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="truncate text-sm">{item.label}</span>}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+// ============================================================
+// Icons
+//
+// Drawn as thin strokes on a 16-unit grid rather than pulled from an icon set:
+// a consistent 1.25 weight matches the hairlines the rest of the interface is
+// built from, and a filled or rounded icon set would fight it.
+// ============================================================
+
+interface IconProps {
+  className?: string;
+}
+
+function stroke(className?: string) {
+  return {
+    className,
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.25,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+}
+
+function MarkIcon({ className }: IconProps) {
+  return (
+    <svg {...stroke(className)}>
+      <circle cx="8" cy="8" r="3.2" />
+      <ellipse cx="8" cy="8" rx="7" ry="2.6" transform="rotate(-24 8 8)" />
     </svg>
   );
 }
 
-function HelpIcon({ className }: { className?: string }) {
+function GlobeIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+    <svg {...stroke(className)}>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M2 8h12M8 2c1.8 2 1.8 10 0 12M8 2c-1.8 2-1.8 10 0 12" />
     </svg>
   );
 }
 
-function GlobeIcon({ className }: { className?: string }) {
+function FlagIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5a17.92 17.92 0 01-8.716-2.247m0 0A9.015 9.015 0 003 12c0-1.605.42-3.113 1.157-4.418" />
+    <svg {...stroke(className)}>
+      <path d="M4 14V2.5M4 3h8l-1.6 2.4L12 8H4" />
     </svg>
   );
 }
 
-function BookIcon({ className }: { className?: string }) {
+function BookIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    <svg {...stroke(className)}>
+      <path d="M2.5 3.5h4a2 2 0 0 1 2 2v8a1.6 1.6 0 0 0-1.6-1.6H2.5zM13.5 3.5h-4a2 2 0 0 0-2 2v8a1.6 1.6 0 0 1 1.6-1.6h4.4z" />
     </svg>
   );
 }
 
-function BeakerIcon({ className }: { className?: string }) {
+function FlaskIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+    <svg {...stroke(className)}>
+      <path d="M6.5 2v4L3 12.2A1.4 1.4 0 0 0 4.2 14h7.6a1.4 1.4 0 0 0 1.2-1.8L9.5 6V2M5.5 2h5M4.6 10h6.8" />
     </svg>
   );
 }
 
-function WrenchIcon({ className }: { className?: string }) {
+function BeakerIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.87 5.87a2.1 2.1 0 01-2.97-2.97l5.87-5.87m2.97 2.97L21 7.5a2.25 2.25 0 00-2.25-2.25H15l-3 3 2.42 2.42z" />
+    <svg {...stroke(className)}>
+      <path d="M8 1.5c1.9 1.7 3 4 3 6.4 0 1.6-.4 3-1.1 4.2H6.1A9 9 0 0 1 5 7.9c0-2.4 1.1-4.7 3-6.4Z" />
+      <path d="M6.1 12.1 4.6 14.5M9.9 12.1l1.5 2.4" />
+      <circle cx="8" cy="6.4" r="1.1" />
     </svg>
   );
 }
 
-function PlayIcon({ className }: { className?: string }) {
+function WrenchIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+    <svg {...stroke(className)}>
+      <path d="M10.6 2.4a3.4 3.4 0 0 0-4.3 4.3l-4 4a1.3 1.3 0 0 0 1.9 1.9l4-4a3.4 3.4 0 0 0 4.3-4.3L10.8 6.2 9 5.8 8.6 4z" />
     </svg>
   );
 }
 
-function FlagIcon({ className }: { className?: string }) {
+function PadIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />
+    <svg {...stroke(className)}>
+      <path d="M8 1.5c1.6 1.8 2.4 4 2.4 6.3V11H5.6V7.8C5.6 5.5 6.4 3.3 8 1.5Z" />
+      <path d="M5.6 8.4 3.6 10.6V13M10.4 8.4l2 2.2V13M2 14.5h12" />
     </svg>
   );
 }
 
-function FolderIcon({ className }: { className?: string }) {
+function GaugeIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+    <svg {...stroke(className)}>
+      <path d="M2.2 12a6.4 6.4 0 1 1 11.6 0" />
+      <path d="M8 12 11 6.6" />
+      <circle cx="8" cy="12" r="0.9" />
     </svg>
   );
 }
 
-function SparklesIcon({ className }: { className?: string }) {
+function ReportIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+    <svg {...stroke(className)}>
+      <path d="M3.5 2h6L12.5 5v9h-9z" />
+      <path d="M9.2 2v3.2h3.2M5.8 8.5h4.4M5.8 11h3" />
     </svg>
   );
 }
 
-function SearchIcon({ className }: { className?: string }) {
+function CompareIcon({ className }: IconProps) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+    <svg {...stroke(className)}>
+      <path d="M8 1.6v12.8M4.2 4.5H2v6h2.2zM14 4.5h-2.2v6H14z" />
+    </svg>
+  );
+}
+
+function FolderIcon({ className }: IconProps) {
+  return (
+    <svg {...stroke(className)}>
+      <path d="M2 4.2A1.2 1.2 0 0 1 3.2 3h2.6l1.4 1.8h5.6A1.2 1.2 0 0 1 14 6v6a1.2 1.2 0 0 1-1.2 1.2H3.2A1.2 1.2 0 0 1 2 12z" />
+    </svg>
+  );
+}
+
+function SparklesIcon({ className }: IconProps) {
+  return (
+    <svg {...stroke(className)}>
+      <path d="M6.2 2.2 7.3 5l2.8 1.1L7.3 7.2 6.2 10 5.1 7.2 2.3 6.1 5.1 5zM11.6 8.6l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" />
+    </svg>
+  );
+}
+
+function HelpIcon({ className }: IconProps) {
+  return (
+    <svg {...stroke(className)}>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M6.4 6.2a1.7 1.7 0 1 1 2.3 1.6c-.5.2-.7.6-.7 1.1v.3" />
+      <path d="M8 11.6h.01" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className }: IconProps) {
+  return (
+    <svg {...stroke(className)}>
+      <path d="M10 4 6 8l4 4" />
     </svg>
   );
 }

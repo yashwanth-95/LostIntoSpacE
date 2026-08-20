@@ -10,28 +10,28 @@ export function TopBar() {
   const navigate = useNavigate();
 
   return (
-    <header className="h-14 border-b border-space-800 bg-space-900/60 backdrop-blur-md flex items-center justify-between px-6 shrink-0">
+    <header className="flex h-14 shrink-0 items-center justify-between bg-[color:var(--plane-1)] px-6 hairline-b">
       <div className="flex items-center gap-4">
         <button
           onClick={() => setSearchOpen(true)}
-          className="flex items-center gap-2 h-8 px-3 rounded-md border border-space-700 bg-space-800/50 text-space-400 text-xs hover:text-space-200 hover:border-space-600 transition-colors min-w-[240px]"
+          className="flex h-8 min-w-[260px] items-center gap-2 rounded-instrument border border-ink-700 bg-ink-950 px-3 text-xs text-ink-500 transition-colors duration-quick hover:border-ink-600 hover:text-ink-200 focus-ring"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
-          <span>Search space objects, missions, lessons...</span>
-          <kbd className="ml-auto text-2xs text-space-500 border border-space-700 rounded px-1">Ctrl+K</kbd>
+          <span>Search objects, missions, science…</span>
+          <kbd className="ml-auto rounded-instrument border border-ink-700 px-1 font-mono text-micro text-ink-600">Ctrl K</kbd>
         </button>
       </div>
 
       <div className="flex items-center gap-3">
         {isAuthenticated && user ? (
           <button
-            onClick={() => navigate('/settings')}
-            className="flex items-center gap-2 text-sm text-space-300 hover:text-space-100 transition-colors"
+            onClick={() => navigate('/workspace')}
+            className="flex items-center gap-2 text-sm text-ink-300 transition-colors hover:text-ink-50 focus-ring"
           >
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent-indigo to-accent-violet flex items-center justify-center">
-              <span className="text-xs font-semibold text-white">
+            <div className="flex h-7 w-7 items-center justify-center rounded-instrument border border-ink-650 bg-ink-850">
+              <span className="font-mono text-xs text-ink-200">
                 {user.name.charAt(0).toUpperCase()}
               </span>
             </div>

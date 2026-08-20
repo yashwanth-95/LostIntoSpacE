@@ -105,12 +105,18 @@ async def run_simulation(config_payload: dict[str, Any]) -> dict[str, Any]:
         ) from exc
     compute_time_s = time.perf_counter() - started
 
+    # Evaluation runs on the *undecimated* result. Scoring against a thinned
+    # series would miss the peaks - max-Q, peak g, peak q-alpha - which are
+    # exactly the samples the structural criteria are measured against.
+    evaluation = engine.evaluate_mission(result, config.vehicle, config.mission).to_dict()
+
     payload = result.model_dump(mode="json")
     generated = len(payload["telemetry"])
     payload["telemetry"], decimated = _decimate(payload["telemetry"])
 
     return {
         "result": payload,
+        "evaluation": evaluation,
         "meta": {
             "engine": ENGINE_NAME,
             "engine_version": ENGINE_VERSION,
@@ -118,6 +124,7 @@ async def run_simulation(config_payload: dict[str, Any]) -> dict[str, Any]:
             "telemetry_points_generated": generated,
             "telemetry_points_returned": len(payload["telemetry"]),
             "telemetry_decimated": decimated,
+            "evaluated": True,
         },
     }
 

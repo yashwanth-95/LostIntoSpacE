@@ -76,7 +76,12 @@ async def run(payload: SimulationRunRequest) -> dict:
     reproducible, and avoids one request per rendered frame.
     """
     outcome = await run_simulation(payload.config)
-    return success_envelope(outcome["result"], meta=outcome["meta"])
+    # The evaluation travels in `meta` rather than in `data`, because `data` is
+    # the engine's own `SimResult` contract and the OpenAPI schema publishes it
+    # as exactly that. Widening `data` here would fork the contract the frontend
+    # generates its types from.
+    meta = {**outcome["meta"], "evaluation": outcome["evaluation"]}
+    return success_envelope(outcome["result"], meta=meta)
 
 
 @router.get("/limits", response_model=SuccessResponse[SimulationLimits], tags=["simulation"])
