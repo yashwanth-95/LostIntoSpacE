@@ -134,19 +134,31 @@ def compute_forces(
     )
 
 
+#: Height above the pad within which the vehicle still counts as resting on it.
+#: Not exactly zero: the integrator moves the vehicle between steps, so a small
+#: band avoids chatter as it lifts.
+PAD_CONTACT_BAND_M = 0.5
+
+
 def ground_constrained_acceleration(
     acceleration: Vec3, position: Vec3, velocity: Vec3, site_altitude_m: float
 ) -> Vec3:
     """
-    Suppress downward acceleration while the vehicle is still sitting on the pad.
+    Suppress downward acceleration while the vehicle is still resting on the pad.
 
     Without this a vehicle whose thrust-to-weight is below 1 sinks through the
     ground during the ignition transient instead of simply failing to lift off.
     The failure system reports the insufficient TWR; the pad just holds it up in
     the meantime.
+
+    The ground is at the *launch site's elevation*, not at mean sea level.
+    Comparing against 0 m MSL puts the pad underground at every real launch
+    site — Cape Canaveral sits about 4 m up, Baikonur about 90 m — which
+    silently disables this constraint and marks the vehicle as airborne before
+    it has moved.
     """
-    altitude_m = altitude_from_enu(position, site_altitude_m)
-    if altitude_m > 0.5:
+    height_above_pad_m = altitude_from_enu(position, site_altitude_m) - site_altitude_m
+    if height_above_pad_m > PAD_CONTACT_BAND_M:
         return acceleration
     if velocity.z > 0.0 or acceleration.z > 0.0:
         return acceleration

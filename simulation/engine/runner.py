@@ -102,9 +102,15 @@ from simulation.models.thrust import (
 #: conventional and defensible place to draw it. Unit: m.
 ORBIT_REPORTING_ALTITUDE_M = 100_000.0
 
-#: Altitude below which a descending vehicle counts as having reached the
-#: surface. Not exactly zero: the integrator lands between steps, so a small
-#: band avoids a vehicle skipping from +3 m to -40 m without ever registering.
+#: Height above the launch site's elevation below which a descending vehicle
+#: counts as having reached the surface. Not exactly zero: the integrator lands
+#: between steps, so a small band avoids a vehicle skipping from +3 m to -40 m
+#: without ever registering.
+#:
+#: Measured from the *pad*, not from mean sea level. Every real launch site has
+#: an elevation (Cape Canaveral ~4 m, Baikonur ~90 m), and comparing against
+#: 0 m MSL both marks a stationary vehicle as airborne and lets it sink through
+#: the pad before impact is noticed.
 SURFACE_BAND_M = 0.5
 
 
@@ -463,7 +469,8 @@ def run_simulation(config: SimConfig) -> SimResult:
 
         altitude_m = altitude_from_enu(state.position, site.altitude_m)
         speed_ms = magnitude(state.velocity)
-        if altitude_m > SURFACE_BAND_M:
+        height_above_pad_m = altitude_m - site.altitude_m
+        if height_above_pad_m > SURFACE_BAND_M:
             state.has_lifted_off = True
 
         # --- 6. Failures ------------------------------------------------------
@@ -630,7 +637,7 @@ def run_simulation(config: SimConfig) -> SimResult:
         if (
             config.termination.on_impact
             and state.has_lifted_off
-            and altitude_m <= SURFACE_BAND_M
+            and height_above_pad_m <= SURFACE_BAND_M
         ):
             termination_reason = "vehicle returned to the surface"
             state.mission_state = MissionState.SURFACE

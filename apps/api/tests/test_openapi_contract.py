@@ -21,6 +21,14 @@ PATHS = SPEC["paths"]
 EXPECTED_PUBLIC = {
     ("get", "/api/v1/health"),
     ("get", "/api/v1/health/ready"),
+    ("get", "/api/v1/health/engines"),
+    # Running a simulation takes no token: guest mode is a product requirement,
+    # and someone should be able to build a rocket and fly it before creating
+    # an account. Saving the result is what needs one. The cost controls that
+    # authentication would otherwise provide are in schemas/simulation.py
+    # (request limits) and simulation/service.py (wall-clock timeout).
+    ("post", "/api/v1/simulations/run"),
+    ("get", "/api/v1/simulations/limits"),
     ("post", "/api/v1/auth/register"),
     ("post", "/api/v1/auth/login"),
     ("post", "/api/v1/auth/refresh"),
@@ -153,8 +161,15 @@ def test_owned_resource_operations_document_404() -> None:
 # ---------- documented contract paths exist ----------
 
 # Paths docs/api/API.md publishes that P1/P3 build against. Deliberately does
-# NOT include simulation/telemetry/stages/rkt/reports/search - those are
-# blocked or deferred and must stay absent (see test below).
+# NOT include telemetry/stages/rkt/reports - those are still blocked or
+# deferred and must stay absent (see test below).
+#
+# `/simulations/run` moved here from MUST_NOT_EXIST during the first-prototype
+# integration: the P3 blocker it was waiting on is resolved. The Python
+# simulation engine is implemented and cross-validated against the TypeScript
+# engine (simulation/tests/test_cross_engine.py), and the telemetry contract is
+# settled - the endpoint publishes the engine's own SimResult as its response
+# model rather than a mirrored copy.
 CONTRACT_PATHS = [
     ("post", "/api/v1/auth/register"),
     ("post", "/api/v1/auth/login"),
@@ -183,6 +198,8 @@ CONTRACT_PATHS = [
     ("get", "/api/v1/lessons"),
     ("get", "/api/v1/lessons/categories"),
     ("post", "/api/v1/learning/progress"),
+    ("post", "/api/v1/simulations/run"),
+    ("get", "/api/v1/simulations/limits"),
 ]
 
 
@@ -197,8 +214,7 @@ def test_documented_contract_path_is_implemented(method: str, path: str) -> None
 MUST_NOT_EXIST = [
     "/api/v1/vehicles/{vehicle_id}/stages",  # vehicle_stages blocked on P3
     "/api/v1/stages/{stage_id}",
-    "/api/v1/simulations/run",  # P3 owns; telemetry contract open
-    "/api/v1/simulations/{simulation_id}/telemetry",
+    "/api/v1/simulations/{simulation_id}/telemetry",  # still deferred: runs are stateless
     "/api/v1/rockets",  # rejected - vehicle is canonical
     "/api/v1/mission-events",  # rejected - simulation_events canonical
     "/api/v1/favorites",  # deferred (SD-3)

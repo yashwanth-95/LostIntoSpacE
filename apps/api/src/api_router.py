@@ -14,6 +14,7 @@ from src.ai.router import router as conversations_router
 from src.auth.router import router as auth_router
 from src.core.config import get_settings
 from src.core.database import get_db
+from src.core.engines import engine_status
 from src.core.envelope import success_envelope
 from src.core.exceptions import AppError
 from src.learning.router import lessons_router, progress_router
@@ -25,6 +26,8 @@ from src.schemas.common import (
     ReadinessStatus,
     SuccessResponse,
 )
+from src.schemas.simulation import EngineStatusReport
+from src.simulation.router import router as simulation_router
 from src.space_data.router import router as space_objects_router
 from src.users.router import router as users_router
 from src.vehicles.router import component_router
@@ -42,6 +45,7 @@ api_router.include_router(component_router, prefix="/components", tags=["vehicle
 api_router.include_router(lessons_router, prefix="/lessons", tags=["learning"])
 api_router.include_router(progress_router, prefix="/learning/progress", tags=["learning"])
 api_router.include_router(space_objects_router, prefix="/space-objects", tags=["space-data"])
+api_router.include_router(simulation_router, prefix="/simulations", tags=["simulation"])
 api_router.include_router(conversations_router, prefix="/conversations", tags=["ai"])
 # docs/api/API.md publishes the conversation endpoints under /ai as well.
 # Mounting the same router twice keeps both documented paths working rather
@@ -59,6 +63,23 @@ async def health_check() -> dict:
     /health/ready.
     """
     return success_envelope({"state": "ok", "service": "lostintospace-api", "version": "0.1.0"})
+
+
+@api_router.get(
+    "/health/engines",
+    tags=["health"],
+    response_model=SuccessResponse[EngineStatusReport],
+)
+async def engines_check() -> dict:
+    """Which compute engines this process can actually reach.
+
+    The simulation, search, and AI engines live in sibling trees rather than
+    installed packages, so an incomplete install shows up as a missing feature
+    at request time rather than at startup. This endpoint makes that visible
+    before a user hits it. Always 200: it reports failures as data, because it
+    is the endpoint you check when something is already wrong.
+    """
+    return success_envelope(engine_status())
 
 
 @api_router.get(
