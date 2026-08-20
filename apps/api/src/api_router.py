@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.assistant_router import router as ai_assistant_router
 from src.ai.router import router as conversations_router
 from src.auth.router import router as auth_router
 from src.core.config import get_settings
@@ -27,6 +28,7 @@ from src.schemas.common import (
     SuccessResponse,
 )
 from src.schemas.simulation import EngineStatusReport
+from src.search.router import router as search_router
 from src.simulation.router import router as simulation_router
 from src.space_data.router import router as space_objects_router
 from src.users.router import router as users_router
@@ -46,6 +48,8 @@ api_router.include_router(lessons_router, prefix="/lessons", tags=["learning"])
 api_router.include_router(progress_router, prefix="/learning/progress", tags=["learning"])
 api_router.include_router(space_objects_router, prefix="/space-objects", tags=["space-data"])
 api_router.include_router(simulation_router, prefix="/simulations", tags=["simulation"])
+api_router.include_router(search_router, prefix="/search", tags=["search"])
+api_router.include_router(ai_assistant_router, prefix="/ai", tags=["ai"])
 api_router.include_router(conversations_router, prefix="/conversations", tags=["ai"])
 # docs/api/API.md publishes the conversation endpoints under /ai as well.
 # Mounting the same router twice keeps both documented paths working rather

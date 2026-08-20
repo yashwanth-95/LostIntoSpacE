@@ -29,6 +29,13 @@ EXPECTED_PUBLIC = {
     # (request limits) and simulation/service.py (wall-clock timeout).
     ("post", "/api/v1/simulations/run"),
     ("get", "/api/v1/simulations/limits"),
+    # Search and grounded AI answering are public for the same reason: a visitor
+    # must be able to find things and ask questions before making an account.
+    # Conversation *persistence* (/conversations) stays authenticated.
+    ("get", "/api/v1/search"),
+    ("post", "/api/v1/ai/ask"),
+    ("post", "/api/v1/ai/explain-failure"),
+    ("get", "/api/v1/ai/provider"),
     ("post", "/api/v1/auth/register"),
     ("post", "/api/v1/auth/login"),
     ("post", "/api/v1/auth/refresh"),
@@ -200,6 +207,9 @@ CONTRACT_PATHS = [
     ("post", "/api/v1/learning/progress"),
     ("post", "/api/v1/simulations/run"),
     ("get", "/api/v1/simulations/limits"),
+    ("get", "/api/v1/search"),
+    ("post", "/api/v1/ai/ask"),
+    ("post", "/api/v1/ai/explain-failure"),
 ]
 
 
