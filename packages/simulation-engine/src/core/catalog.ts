@@ -45,6 +45,7 @@ import type {
   FailureMode,
 } from './component-types.js';
 import { ComponentRegistry } from './component-registry.js';
+import { EXTENDED_COMPONENTS } from './catalog-extended.js';
 
 // ============================================================
 // Shared property presets
@@ -949,7 +950,15 @@ const LANDING_LEGS: readonly LandingLegDef[] = [
 // Public catalogue
 // ============================================================
 
-/** Every stock component definition, in catalogue order. */
+/**
+ * Every stock component definition, in catalogue order.
+ *
+ * The core set defined above provides one or two of each category — enough to
+ * build something that flies. `catalog-extended.ts` adds the rest: every nose
+ * profile and fin planform so the aerodynamic choice is real, solid motors with
+ * thrust curves, and the structural, avionics and recovery parts a complete
+ * vehicle actually has.
+ */
 export const STOCK_COMPONENTS: readonly ComponentDef[] = Object.freeze([
   ...NOSE_CONES,
   ...BODIES,
@@ -964,6 +973,7 @@ export const STOCK_COMPONENTS: readonly ComponentDef[] = Object.freeze([
   ...PARACHUTES,
   ...HEAT_SHIELDS,
   ...LANDING_LEGS,
+  ...EXTENDED_COMPONENTS,
 ]);
 
 /**
