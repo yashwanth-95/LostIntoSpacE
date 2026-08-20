@@ -1,16 +1,33 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Learn. Build. Simulate. Explore. Understand Space." />
-    <title>LostIntoSpace — Space Exploration Platform</title>
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#060605" />
+    <meta
+      name="description"
+      content="An interactive space laboratory. Explore real objects and missions, build a rocket from real components, fly it through a physics simulation, and understand why it succeeded or failed."
+    />
+    <title>LostIntoSpacE — Space Laboratory</title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!--
+      Four typefaces, four jobs:
+        Instrument Serif  - editorial display: the name of a planet, a mission
+        IBM Plex Sans     - interface and technical prose
+        IBM Plex Sans Condensed - dense instrument labels
+        IBM Plex Mono     - every measured value
+        Newsreader        - long-form reading in the science library
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@300;400;450;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@300;400;500&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300&display=swap"
+      rel="stylesheet"
+    />
   </head>
-  <body class="bg-space-950 text-space-100 antialiased">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

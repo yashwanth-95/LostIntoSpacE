@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ── The scientific core. Runs first and gates everything: if the physics is
+  # wrong, nothing downstream is worth building.
+  simulation-engine:
+    name: Simulation engine (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/simulation-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: packages/simulation-engine/package-lock.json
+      - run: npm ci
+      - name: Typecheck (browser, headless and test configs)
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+
+  web:
+    name: Web application
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - name: Typecheck and build
+        run: npm run build
+      - name: Unit tests
+        run: npm test
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 7
+
+  # ── data / search / ai trees. No database needed: these are pure Python.
+  python-platform:
+    name: Data, search and AI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          pip install scipy
+      - name: Tests
+        run: pytest
+
+  # ── The Python flight simulation, tested against a real Postgres so the
+  # API's persistence paths are exercised rather than mocked away.
+  api:
+    name: API and flight simulation
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: lostintospace
+          POSTGRES_PASSWORD: lostintospace
+          POSTGRES_DB: lostintospace_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://lostintospace:lostintospace@localhost:5432/lostintospace_test
+      TEST_DATABASE_URL: postgresql+asyncpg://lostintospace:lostintospace@localhost:5432/lostintospace_test
+      SECRET_KEY: ci-only-secret-not-used-in-production
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          pip install -e './apps/api'
+          pip install scipy alembic asyncpg
+      - name: Apply migrations
+        working-directory: database
+        run: alembic upgrade head
+      - name: Seed reference data
+        run: python -m database.seeds.seed_all
+      - name: Flight simulation tests
+        run: pytest simulation/tests -q
+      - name: API tests
+        working-directory: apps/api
+        run: pytest -q
+
+  # ── Cross-language agreement. The Python contracts and the TypeScript
+  # contracts describe the same rocket; this fails when they drift.
+  contract-parity:
+    name: Contract parity
+    runs-on: ubuntu-latest
+    needs: [simulation-engine, python-platform]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          pip install scipy
+      - name: Check the .rkt schema and simulation contracts agree
+        run: python scripts/ci/check_contract_parity.py

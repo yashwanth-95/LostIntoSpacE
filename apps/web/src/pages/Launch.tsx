@@ -357,7 +357,7 @@ export default function Launch() {
           <Card className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-2xs text-space-500">Readiness</span>
-              <Badge variant={blocking.length === 0 ? 'emerald' : 'warning'}>
+              <Badge variant={blocking.length === 0 ? 'nominal' : 'warning'}>
                 {blocking.length === 0 ? 'GO' : `${blocking.length} WARNING`}
               </Badge>
             </div>

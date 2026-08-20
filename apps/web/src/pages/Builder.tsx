@@ -197,7 +197,7 @@ export default function Builder() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <Badge variant={activeStage === index ? 'cyan' : 'default'}>
+                          <Badge variant={activeStage === index ? 'cryo' : 'default'}>
                             Stage {index}
                           </Badge>
                           <span className="text-sm text-space-200">{stage.name}</span>

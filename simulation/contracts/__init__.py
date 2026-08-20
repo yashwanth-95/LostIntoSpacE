@@ -12,7 +12,7 @@ All values are SI units unless documented otherwise.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -202,11 +202,26 @@ class LaunchSite(BaseModel):
 
 
 class EnvironmentConfig(BaseModel):
-    """Launch-day conditions."""
+    """Launch-day conditions.
+
+    These are consumed, not decorative. Surface temperature and pressure shift
+    the whole atmosphere profile away from the standard day, humidity changes
+    air density, and the wind fields drive a full altitude wind profile that the
+    force model resolves into airspeed and angle of attack. A change to any of
+    them changes the trajectory.
+    """
     temperature_K: float = Field(default=288.15, description="Surface temperature. Unit: K")
     pressure_Pa: float = Field(default=101_325.0, description="Surface pressure. Unit: Pa")
-    wind_speed_ms: float = Field(default=0.0, ge=0, description="Wind speed. Unit: m/s")
+    wind_speed_ms: float = Field(default=0.0, ge=0, description="Wind speed at 10 m. Unit: m/s")
     wind_direction_deg: float = Field(default=0.0, description="Wind from direction. Unit: degrees")
+    relative_humidity: float = Field(
+        default=0.0, ge=0, le=1, description="Relative humidity, 0-1. Moist air is less dense."
+    )
+    jet_wind_speed_ms: float = Field(
+        default=0.0, ge=0, description="Wind speed at the tropopause. 0 estimates it. Unit: m/s"
+    )
+    source: str = Field(default="standard_day", description="Provider that supplied these values")
+    observed_at: Optional[str] = Field(default=None, description="ISO-8601 observation time")
 
     model_config = ConfigDict(frozen=True)
 
@@ -404,10 +419,22 @@ class TelemetryPoint(BaseModel):
     air_density_kgm3: float = 0.0
     ambient_pressure_Pa: float = 0.0
 
-    # Attitude
+    # Attitude and the air it is flying through
     pitch_rad: float = 0.0
     yaw_rad: float = 0.0
     angle_of_attack_rad: float = 0.0
+    #: Speed relative to the air mass. Differs from `speed_ms` whenever there is
+    #: wind, and it is this one the aerodynamics use.
+    airspeed_ms: float = 0.0
+    #: Wind speed at the vehicle's altitude. Unit: m/s.
+    wind_speed_ms: float = 0.0
+    #: Direction that wind is coming from. Unit: degrees.
+    wind_direction_deg: float = 0.0
+    #: Dynamic pressure times angle of attack - the lateral structural load that
+    #: decides whether a windy day is flyable. Unit: Pa.deg.
+    q_alpha_Padeg: float = 0.0
+    #: Lateral distance from the intended ground track. Unit: m.
+    lateral_deviation_m: float = 0.0
 
     # Orbital state
     semi_major_axis_m: float = 0.0
@@ -491,6 +518,10 @@ class SimSummary(BaseModel):
     delta_v_ideal_ms: float = 0.0
     gravity_loss_ms: float = 0.0
     drag_loss_ms: float = 0.0
+    max_q_alpha_Padeg: float = 0.0
+    max_angle_of_attack_deg: float = 0.0
+    max_lateral_deviation_m: float = 0.0
+    max_wind_speed_ms: float = 0.0
 
     model_config = ConfigDict(frozen=True)
 

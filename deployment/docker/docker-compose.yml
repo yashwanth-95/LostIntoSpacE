@@ -1,0 +1,55 @@
+# Local stack: database, API, and the built client behind nginx.
+#
+#   docker compose -f deployment/docker/docker-compose.yml up --build
+#
+# The API waits for Postgres to report healthy before it starts, so the first
+# `alembic upgrade head` does not race the server's own initialisation.
+
+name: lostintospace
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lostintospace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lostintospace}
+      POSTGRES_DB: ${POSTGRES_DB:-lostintospace}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-lostintospace}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/api.Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lostintospace}:${POSTGRES_PASSWORD:-lostintospace}@db:5432/${POSTGRES_DB:-lostintospace}
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me}
+      APP_ENV: ${APP_ENV:-development}
+      NASA_API_KEY: ${NASA_API_KEY:-DEMO_KEY}
+      # Weather comes from Open-Meteo, which needs no key. Set
+      # OPENWEATHER_API_KEY only to prefer OpenWeather instead.
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '8000:8000'
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/web.Dockerfile
+    depends_on:
+      - api
+    ports:
+      - '3000:80'
+
+volumes:
+  pgdata:

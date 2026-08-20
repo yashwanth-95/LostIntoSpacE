@@ -94,7 +94,7 @@ export default function RocketLab() {
                   {preset.name}
                 </h3>
                 <Badge
-                  variant={preset.difficulty === 'starter' ? 'emerald' : 'default'}
+                  variant={preset.difficulty === 'starter' ? 'nominal' : 'default'}
                   className="shrink-0"
                 >
                   {preset.difficulty}

@@ -2,15 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Global styles for the instrument.
+ *
+ * Three rules govern everything below:
+ *
+ * 1. Surfaces are planes, not cards. A panel is a plane with a hairline rule,
+ *    not a floating rounded rectangle with a shadow.
+ * 2. Numbers are monospaced and tabular. A value that jitters as it updates is
+ *    unreadable, and telemetry updates constantly.
+ * 3. Motion communicates state. Nothing moves for atmosphere.
+ */
+
 @layer base {
+  :root {
+    /* Depth is expressed as elevation of a plane, not as a drop shadow. */
+    --plane-0: #060605;
+    --plane-1: #0d0c0b;
+    --plane-2: #141311;
+    --plane-3: #1c1a17;
+
+    /* Hairlines. The primary structural device in this interface. */
+    --rule-faint: rgba(228, 221, 211, 0.06);
+    --rule: rgba(228, 221, 211, 0.11);
+    --rule-strong: rgba(228, 221, 211, 0.2);
+
+    /* The illumination model: one light source, warm, from upper left. */
+    --lit: rgba(255, 244, 226, 0.9);
+
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--plane-0);
+    color: theme('colors.ink.200');
+    font-family: theme('fontFamily.sans');
+    font-feature-settings: 'cv05' 1, 'ss03' 1;
+    overflow-x: hidden;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Every number, everywhere, is tabular. */
+  .font-mono,
+  code,
+  kbd,
+  samp {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'zero' 1;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background-color: theme('colors.signal.flame / 0.3');
+    color: theme('colors.ink.50');
+  }
+
+  /* Scrollbars read as part of the instrument rather than the OS. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: theme('colors.space.700') transparent;
+    scrollbar-color: theme('colors.ink.700') transparent;
   }
 
   *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   *::-webkit-scrollbar-track {
@@ -18,40 +87,136 @@
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: theme('colors.space.700');
-    border-radius: 3px;
+    background-color: theme('colors.ink.750');
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
 
-  ::selection {
-    background-color: theme('colors.accent.cyan / 0.25');
-    color: white;
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.ink.650');
   }
 
-  body {
-    overflow-x: hidden;
+  /* Anyone who asks for less motion gets a static instrument, which still
+     works: nothing here depends on animation to convey information. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
-  .glass-panel {
-    @apply bg-space-900/60 backdrop-blur-md border border-space-700/50 rounded-lg;
+  /* ── Surfaces ─────────────────────────────────────────────── */
+
+  /**
+   * A plane. The base surface of the system: a flat field separated from what
+   * is behind it by a hairline, not by a shadow or a blur.
+   */
+  .plane {
+    background-color: var(--plane-1);
+    border: 1px solid var(--rule);
+    border-radius: theme('borderRadius.panel');
   }
 
-  .glass-panel-dense {
-    @apply bg-space-900/80 backdrop-blur-sm border border-space-700/40 rounded-md;
+  .plane-raised {
+    background-color: var(--plane-2);
+    border: 1px solid var(--rule);
+    border-radius: theme('borderRadius.panel');
   }
 
-  .text-gradient {
-    @apply bg-gradient-to-r from-accent-cyan to-accent-blue bg-clip-text text-transparent;
+  .plane-sunken {
+    background-color: var(--plane-0);
+    border: 1px solid var(--rule-faint);
+    border-radius: theme('borderRadius.panel');
   }
 
-  .glow-cyan {
-    box-shadow: 0 0 20px theme('colors.accent.cyan / 0.15'),
-                0 0 60px theme('colors.accent.cyan / 0.05');
+  /**
+   * An instrument plate: a plane with the faint engineering grid, for readouts
+   * and diagram backgrounds.
+   */
+  .plate {
+    background-color: var(--plane-1);
+    background-image: theme('backgroundImage.plate');
+    background-size: theme('backgroundSize.plate');
+    border: 1px solid var(--rule);
+    border-radius: theme('borderRadius.panel');
   }
+
+  /* ── Structure ────────────────────────────────────────────── */
+
+  /** A labelled section rule. The main way this interface divides space. */
+  .rule-label {
+    @apply flex items-center gap-3 text-micro uppercase tracking-instrument text-ink-400;
+  }
+
+  .rule-label::after {
+    content: '';
+    @apply flex-1 h-px;
+    background-color: var(--rule);
+  }
+
+  /** A vertical data rail — the left edge of a telemetry column. */
+  .rail {
+    border-left: 1px solid var(--rule);
+    padding-left: theme('spacing.4');
+  }
+
+  /* ── Type roles ───────────────────────────────────────────── */
+
+  /** The name of a thing. Editorial, never for data. */
+  .t-display {
+    @apply font-display font-normal text-ink-50;
+  }
+
+  /** A field label on an instrument. */
+  .t-label {
+    @apply font-condensed text-micro uppercase tracking-instrument text-ink-400;
+  }
+
+  /** A measured value. Always monospaced, always tabular. */
+  .t-value {
+    @apply font-mono tabular-nums text-ink-100;
+  }
+
+  /** The unit that follows a value. Subordinate to it. */
+  .t-unit {
+    @apply font-mono text-ink-500;
+  }
+
+  /** Explanatory prose. */
+  .t-prose {
+    @apply text-sm leading-relaxed text-ink-300;
+  }
+
+  /* ── Interaction ──────────────────────────────────────────── */
 
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-space-950;
+    @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal-flame focus-visible:ring-offset-2 focus-visible:ring-offset-ink-1000;
+  }
+
+  /**
+   * A live indicator. One slow breath, used only where something is genuinely
+   * live — a streaming telemetry link, a running simulation.
+   */
+  .beacon {
+    @apply inline-block h-1.5 w-1.5 rounded-full animate-beacon;
+  }
+
+  /* ── Data visualisation ───────────────────────────────────── */
+
+  /** A horizontal bar gauge track. */
+  .gauge-track {
+    @apply relative h-1 w-full overflow-hidden;
+    background-color: theme('colors.ink.800');
+  }
+
+  .gauge-fill {
+    @apply absolute inset-y-0 left-0 transition-[width] duration-quick ease-instrument;
   }
 }
 
@@ -63,5 +228,35 @@
 
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /** Content that must never widen the page: tables, diagrams, code. */
+  .scroll-x {
+    @apply overflow-x-auto;
+  }
+
+  /** Hairline dividers, used far more than borders on boxes. */
+  .hairline-t {
+    border-top: 1px solid var(--rule);
+  }
+  .hairline-b {
+    border-bottom: 1px solid var(--rule);
+  }
+  .hairline-l {
+    border-left: 1px solid var(--rule);
+  }
+  .hairline-r {
+    border-right: 1px solid var(--rule);
+  }
+
+  /** A mask that fades a field into the ground at its edges. */
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  }
+
+  .mask-fade-edges {
+    -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 55%, transparent 100%);
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 55%, transparent 100%);
   }
 }

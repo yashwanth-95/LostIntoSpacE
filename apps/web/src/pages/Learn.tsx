@@ -130,7 +130,7 @@ export default function Learn() {
                   {path.title}
                 </h3>
                 <Badge
-                  variant={path.level === 'beginner' ? 'emerald' : 'default'}
+                  variant={path.level === 'beginner' ? 'nominal' : 'default'}
                   className="shrink-0 text-2xs"
                 >
                   {path.level}

@@ -79,7 +79,7 @@ export default function Assistant() {
         <div className="flex items-center gap-3 mb-1">
           <h1 className="font-display text-2xl font-semibold text-space-100">AI Assistant</h1>
           {provider && (
-            <Badge variant={provider === 'extractive' ? 'warning' : 'cyan'} className="text-2xs">
+            <Badge variant={provider === 'extractive' ? 'warning' : 'cryo'} className="text-2xs">
               {provider}
             </Badge>
           )}
