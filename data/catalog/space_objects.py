@@ -15,9 +15,38 @@ in the legend mean something.
 from typing import Dict, List
 
 from ._helpers import BUNDLED, JPL_SSD, NASA_FACTSHEET, prop, text_prop
+from .imagery import image_for
 from .models import Appearance, CatalogObject, ObjectKind, RingSystem, SurfaceTexture
 
-__all__ = ["build_space_objects", "SPACE_OBJECT_IDS"]
+__all__ = ["build_space_objects", "space_objects_by_id", "SPACE_OBJECT_IDS"]
+
+#: Catalog id to imagery key, where the two differ. Objects not listed here look
+#: up their own id.
+_IMAGE_KEYS = {
+    "churyumov-gerasimenko": "churyumov",
+    "voyager-1": "voyager",
+    "voyager-2": "voyager",
+    "new-horizons": "new-horizons-craft",
+    "parker-solar-probe": "parker",
+    "chandrayaan-3": "moon-surface",
+}
+
+#: Extra photographs worth showing on an object's detail page.
+_GALLERY_KEYS = {
+    "mars": ["mars-surface", "perseverance", "curiosity"],
+    "luna": ["moon-surface", "apollo11", "earthrise"],
+    "earth": ["earthrise", "pale-blue-dot", "aurora", "iss"],
+    "saturn": ["saturn-rings", "titan", "enceladus"],
+    "jupiter": ["io", "europa", "ganymede", "callisto"],
+    "sol": ["parker"],
+    "pluto": ["new-horizons-craft"],
+    "iss": ["aurora", "earth"],
+    "jwst": ["carina", "star-field"],
+    "hubble": ["star-field", "galaxy", "nebula"],
+    "perseverance": ["mars-surface", "ingenuity"],
+    "neptune": ["triton"],
+    "uranus": ["voyager"],
+}
 
 _FACTS = [NASA_FACTSHEET, JPL_SSD]
 _T = SurfaceTexture
@@ -25,6 +54,10 @@ _T = SurfaceTexture
 
 def build_space_objects() -> List[CatalogObject]:
     """The full catalog, in the order the explorer presents it."""
+    return _with_imagery(_catalog())
+
+
+def _catalog() -> List[CatalogObject]:
     return [
         # ── The star ────────────────────────────────────────────────
         CatalogObject(
@@ -581,6 +614,27 @@ def build_space_objects() -> List[CatalogObject]:
             sources=_FACTS,
         ),
     ] + _dwarf_planets() + _moons() + _small_bodies() + _spacecraft()
+
+
+def _with_imagery(objects: List[CatalogObject]) -> List[CatalogObject]:
+    """Attach verified photography to each object.
+
+    Done here rather than inline in every entry so that adding an image is a
+    one-line change to the imagery table, and so an object with no verified
+    photograph simply carries `None` and falls through to the procedural
+    renderer instead of pointing at a URL that does not exist.
+    """
+    resolved = []
+    for obj in objects:
+        primary = image_for(_IMAGE_KEYS.get(obj.id, obj.id))
+        gallery = [
+            image
+            for key in _GALLERY_KEYS.get(obj.id, [])
+            for image in [image_for(key)]
+            if image is not None and image is not primary
+        ]
+        resolved.append(obj.model_copy(update={"image": primary, "gallery": gallery}))
+    return resolved
 
 
 def _dwarf_planets() -> List[CatalogObject]:
