@@ -1639,6 +1639,108 @@ def _atmospheric() -> List[ScienceTopic]:
             estimated_minutes=9,
             sources=[BUNDLED],
         ),
+
+        ScienceTopic(
+            slug="reentry-heating",
+            title="Re-entry heating",
+            strand="Atmospheric flight",
+            level="advanced",
+            summary=(
+                "The heat does not come from friction. It comes from compressing air so "
+                "violently that it glows, and knowing which changes how you design for it."
+            ),
+            outcomes=[
+                "Explain where re-entry heat actually comes from",
+                "Say why a blunt body survives better than a sharp one",
+                "Compare ablative and reusable thermal protection",
+            ],
+            prerequisites=["atmospheric-drag", "dynamic-pressure"],
+            sections=[
+                TopicSection(
+                    heading="Compression, not friction",
+                    body=(
+                        "A vehicle entering at 7.8 km/s carries about 30 megajoules per "
+                        "kilogram of kinetic energy, and essentially all of it has to go "
+                        "somewhere in a few minutes. It goes into the air, which cannot get out "
+                        "of the way fast enough and is compressed and heated to thousands of "
+                        "kelvin in the shock layer ahead of the vehicle.\n\n"
+                        "Friction against the surface is a minor contributor. The heat is in "
+                        "the air, radiating and conducting into the vehicle from a standoff "
+                        "distance — and that distinction is the whole basis of the design."
+                    ),
+                ),
+                TopicSection(
+                    heading="Why blunt is better",
+                    body=(
+                        "H. Julian Allen worked this out in 1951 and it was counter-intuitive "
+                        "then too: a *blunt* body survives entry far better than a streamlined "
+                        "one. A blunt nose pushes a strong detached bow shock well ahead of the "
+                        "vehicle, so most of the hot gas is carried around it rather than "
+                        "against it. A sharp nose keeps the shock attached, and the heat "
+                        "arrives on the skin.\n\n"
+                        "This is why every crewed capsule from Mercury to Orion is a shallow "
+                        "dish rather than a spike, and why the Shuttle re-entered at a 40° "
+                        "angle of attack — presenting its flat belly rather than its nose."
+                    ),
+                    equation="q̇ ∝ √(ρ/R_nose)·v³",
+                    worked_example=(
+                        "Heating goes as the *cube* of velocity. Returning from the Moon at "
+                        "11.0 km/s rather than from low orbit at 7.8 gives "
+                        "(11.0/7.8)³ = 2.8 times the peak heat flux — which is why Orion's "
+                        "shield is a different problem from a capsule returning from the "
+                        "station."
+                    ),
+                ),
+                TopicSection(
+                    heading="Ablate or radiate",
+                    body=(
+                        "**Ablative** shields are designed to be destroyed. The material chars "
+                        "and erodes, carrying heat away with the mass that leaves. It is simple, "
+                        "extremely reliable, and single-use. Orion's shield reached 2,760 °C on "
+                        "Artemis I and came back visibly eaten — more unevenly than predicted, "
+                        "which delayed the next flight.\n\n"
+                        "**Reusable** systems radiate instead: ceramic tiles that survive the "
+                        "heat and re-emit it. The Shuttle's tiles worked, and each of the 24,000 "
+                        "of them was individually shaped, individually bonded, and individually "
+                        "inspected between flights. Columbia was lost when one section of leading-"
+                        "edge panel was breached by foam debris on ascent.\n\n"
+                        "Entry angle is the other half of the problem. Too steep and the "
+                        "deceleration and heating exceed what the vehicle can take; too shallow "
+                        "and it skips off the atmosphere entirely. The usable corridor for a "
+                        "lunar return is a couple of degrees wide."
+                    ),
+                ),
+            ],
+            interactive=InteractiveSpec(
+                kind="reentry-heating",
+                title="Enter the atmosphere",
+                instruction="Change entry velocity and nose radius, and watch peak heating move.",
+                parameters=[
+                    _param("entry_velocity_kms", "Entry velocity", 3, 13, 7.8,
+                           unit="km/s", precision=2,
+                           hint="7.8 from low orbit, 11.0 returning from the Moon"),
+                    _param("nose_radius_m", "Nose radius", 0.05, 6, 2.0, unit="m",
+                           logarithmic=True, precision=2),
+                    _param("entry_angle_deg", "Entry flight path angle", 0.5, 12, 6.0,
+                           unit="°", precision=2),
+                    _param("ballistic_coefficient", "Ballistic coefficient", 20, 600, 120,
+                           unit="kg/m²", logarithmic=True, precision=0),
+                ],
+                outputs=["peak_heat_flux", "peak_deceleration", "peak_heating_altitude",
+                         "corridor_verdict"],
+                equation="q̇ = k·√(ρ/R_n)·v³",
+            ),
+            glossary={
+                "Bow shock": "The detached shock ahead of a blunt body. Its standoff distance is what protects the vehicle.",
+                "Ablation": "Deliberate erosion of the heat shield, carrying heat away with the departing mass.",
+                "Entry corridor": "The narrow band of flight path angles that is neither too steep nor too shallow.",
+            },
+            object_ids=["earth", "mars", "venus"],
+            explains_failures=["thermal_failure", "excessive_g_load"],
+            estimated_minutes=9,
+            image=image_for("artemis1"),
+            sources=[BUNDLED],
+        ),
     ]
 
 
@@ -2088,6 +2190,7 @@ SCIENCE_SLUGS = [
     "thrust", "specific-impulse", "tsiolkovsky", "staging", "thrust-to-weight",
     "propellants",
     "atmospheric-drag", "dynamic-pressure", "atmosphere-structure", "wind-and-shear",
+    "reentry-heating",
     "stability-margin", "guidance-navigation-control", "recovery", "failure-analysis",
     "payload", "telemetry",
 ]

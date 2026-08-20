@@ -13,11 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.ai.assistant_router import router as ai_assistant_router
 from src.ai.router import router as conversations_router
 from src.auth.router import router as auth_router
+from src.catalog.router import router as catalog_router
 from src.core.config import get_settings
 from src.core.database import get_db
 from src.core.engines import engine_status
 from src.core.envelope import success_envelope
 from src.core.exceptions import AppError
+from src.environment.router import router as environment_router
 from src.learning.router import lessons_router, progress_router
 from src.missions.router import router as missions_router
 from src.projects.router import router as projects_router
@@ -47,6 +49,8 @@ api_router.include_router(component_router, prefix="/components", tags=["vehicle
 api_router.include_router(lessons_router, prefix="/lessons", tags=["learning"])
 api_router.include_router(progress_router, prefix="/learning/progress", tags=["learning"])
 api_router.include_router(space_objects_router, prefix="/space-objects", tags=["space-data"])
+api_router.include_router(catalog_router, prefix="/catalog", tags=["catalog"])
+api_router.include_router(environment_router, prefix="/environment", tags=["environment"])
 api_router.include_router(simulation_router, prefix="/simulations", tags=["simulation"])
 api_router.include_router(search_router, prefix="/search", tags=["search"])
 api_router.include_router(ai_assistant_router, prefix="/ai", tags=["ai"])

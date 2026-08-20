@@ -35,6 +35,8 @@ __all__ = [
     "engine_status",
     "ensure_engine_paths",
     "get_ai",
+    "get_catalog",
+    "get_environment",
     "get_search",
     "get_simulation",
 ]
@@ -152,6 +154,73 @@ def get_ai() -> Any:
     )
 
 
+@lru_cache
+def get_catalog() -> Any:
+    """The platform catalog: objects, sites, science, experiments, missions, assets.
+
+    Unlike the other engines this one has no heavy dependencies beyond pydantic,
+    so in practice it is always available. It goes through the same seam anyway,
+    because a router that imports ``data.catalog`` directly is a router that
+    breaks when the tree moves.
+
+    Raises:
+        EngineUnavailableError: If the data tree cannot be imported.
+    """
+    ensure_engine_paths()
+    try:
+        from data.catalog import (
+            build_assets,
+            build_experiments,
+            build_launch_sites,
+            build_reference_missions,
+            build_science_topics,
+            build_space_objects,
+            rotation_bonus_ms,
+        )
+        from data.catalog.science import STRANDS
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        raise EngineUnavailableError("catalog", str(exc)) from exc
+
+    import types
+
+    return types.SimpleNamespace(
+        build_space_objects=build_space_objects,
+        build_launch_sites=build_launch_sites,
+        build_science_topics=build_science_topics,
+        build_experiments=build_experiments,
+        build_reference_missions=build_reference_missions,
+        build_assets=build_assets,
+        rotation_bonus_ms=rotation_bonus_ms,
+        STRANDS=STRANDS,
+    )
+
+
+@lru_cache
+def get_environment() -> Any:
+    """Live launch-site weather and the launch commit criteria.
+
+    Raises:
+        EngineUnavailableError: If the environment tree cannot be imported.
+    """
+    ensure_engine_paths()
+    try:
+        from data.environment import (
+            WeatherObservation,
+            WeatherService,
+            assess_launch_conditions,
+        )
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        raise EngineUnavailableError("environment", str(exc)) from exc
+
+    import types
+
+    return types.SimpleNamespace(
+        WeatherService=WeatherService,
+        WeatherObservation=WeatherObservation,
+        assess_launch_conditions=assess_launch_conditions,
+    )
+
+
 def engine_status() -> dict[str, dict[str, Any]]:
     """Which engines are importable right now, for ``/health/engines``.
 
@@ -163,6 +232,8 @@ def engine_status() -> dict[str, dict[str, Any]]:
         ("simulation", get_simulation),
         ("search", get_search),
         ("ai", get_ai),
+        ("catalog", get_catalog),
+        ("environment", get_environment),
     ):
         try:
             loader()
