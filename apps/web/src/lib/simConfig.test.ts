@@ -104,8 +104,8 @@ describe('buildSimConfig', () => {
   it('scales the pitch program to the target altitude', () => {
     // A program that flattens out at a fixed altitude is right for one orbit
     // and wrong for another; tying it to the target keeps both sensible.
-    expect(orbital.guidance!.pitch_program_end_altitude_m).toBeGreaterThan(
-      hop.guidance!.pitch_program_end_altitude_m,
+    expect(orbital.guidance!.pitch_program_end_altitude_m!).toBeGreaterThan(
+      hop.guidance!.pitch_program_end_altitude_m!,
     );
   });
 
