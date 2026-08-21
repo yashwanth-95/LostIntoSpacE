@@ -54,6 +54,12 @@ warn_unused_ignores = true
 testpaths = ["tests"]
 addopts = "-q"
 asyncio_mode = "auto"
+# `tests/test_*_live.py` import `requires_db` from `tests.conftest`, which needs
+# this directory importable. `python -m pytest` adds the working directory to
+# sys.path and the bare `pytest` console script does not, so the suite passed
+# locally and failed in CI purely on how it was invoked. Declaring the path
+# makes it invocation-independent.
+pythonpath = ["."]
 
 [build-system]
 requires = ["setuptools>=68"]
