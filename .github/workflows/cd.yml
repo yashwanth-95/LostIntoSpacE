@@ -85,6 +85,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Container registries require a lowercase repository name, and
+      # `github.repository` preserves the owner's capitalisation — for this
+      # repo that is `yashwanth-95/LostIntoSpacE`, which ghcr rejects outright.
+      - id: image
+        name: Derive a lowercase image prefix
+        run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - name: API image
         uses: docker/build-push-action@v6
         with:
@@ -92,8 +99,8 @@ jobs:
           file: deployment/docker/api.Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/api:${{ needs.build.outputs.version }}
-            ghcr.io/${{ github.repository }}/api:latest
+            ${{ steps.image.outputs.prefix }}/api:${{ needs.build.outputs.version }}
+            ${{ steps.image.outputs.prefix }}/api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -104,8 +111,8 @@ jobs:
           file: deployment/docker/web.Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/web:${{ needs.build.outputs.version }}
-            ghcr.io/${{ github.repository }}/web:latest
+            ${{ steps.image.outputs.prefix }}/web:${{ needs.build.outputs.version }}
+            ${{ steps.image.outputs.prefix }}/web:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
