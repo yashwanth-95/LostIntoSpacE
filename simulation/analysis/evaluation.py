@@ -1,761 +1,1260 @@
-"""Scoring a flight against engineering criteria.
+"""
+Mission evaluation.
 
-Nine categories, each scored out of 100 from criteria whose measurements come
-from the *undecimated* telemetry — the run's true peaks, not the thinned series
-sent to the browser. A max-Q that falls between two returned samples must still
-be scored.
+Turns a finished flight into a scored report: nine categories, each with a
+number out of a hundred, the measurements that produced it, and a sentence
+saying what the number means.
 
-## How a criterion scores
+## Why the scores are rules rather than a formula
 
-Each criterion declares an acceptable band and a weight. Inside the band it
-earns full marks. Outside it, marks fall off smoothly with how far outside it
-sits, rather than dropping to zero at the boundary — because a static margin of
-0.98 calibers is very nearly fine and 0.1 calibers is not, and a step function
-would score them identically.
+Every score here is computed from a *stated criterion* with a threshold — "the
+liftoff thrust-to-weight ratio should be between 1.2 and 1.5", "static margin
+should sit between 1 and 2 calibers" — and the report carries the measured
+value, the threshold, and the deduction alongside the score. A single opaque
+number derived from a weighted formula would be worse than useless in a
+teaching product: it would tell a learner they scored 61 without telling them
+which of their decisions cost them the other 39.
 
-## What is deliberately not scored
+Every criterion is therefore individually explicable, and the report shows its
+working.
 
-Categories the flight never exercised. A vehicle with no recovery system is not
-marked down for failing to deploy a parachute; that category is returned as
-`not_applicable` with the reason. Scoring absent hardware as zero would push
-every simple design's overall score down for no engineering reason.
+## What a score is not
+
+It is not a judgement of whether the mission succeeded. A flight can fail and
+still score well on propulsion, and a flight that reached orbit can score badly
+on structure because it spent the whole ascent inside its own load limits by a
+hair. Success is a separate, binary fact the simulation already reports;
+these scores are about *how well the design was made*.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Sequence
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence
 
-from .evaluation_models import (
-    EvaluationCategory,
-    EvaluationCriterion,
-    MissionEvaluation,
+from simulation.contracts import (
+    EventSeverity,
+    FailureDetail,
+    MissionConfig,
+    SimResult,
+    TelemetryPoint,
+    Vehicle,
 )
 
-__all__ = ["evaluate_mission"]
+__all__ = [
+    "Criterion",
+    "CategoryScore",
+    "MissionEvaluation",
+    "evaluate_mission",
+    "CATEGORY_ORDER",
+]
 
-#: How far outside its band a value must go before a criterion scores zero,
-#: as a multiple of the bound it violated. 1.5 means a static margin of 0.42
-#: against a 1.0 minimum keeps 61% of its marks — clearly penalised, but not
-#: scored identically to a margin of zero.
-#:
-#: Scaled against the *bound*, never against the band width. Scaling by width
-#: made a wide band forgiving in a way that had nothing to do with the physics:
-#: stability's 1.0–2.5 caliber band is 1.5 wide, so a margin of 0.42 scored 74%
-#: purely because the acceptable range happened to be broad.
-_FALLOFF = 1.5
+#: The categories, in report order — vehicle first, outcome last.
+CATEGORY_ORDER = [
+    "vehicle",
+    "propulsion",
+    "stability",
+    "aerodynamics",
+    "structural",
+    "environment",
+    "trajectory",
+    "recovery",
+    "mission",
+]
+
+CATEGORY_LABELS = {
+    "vehicle": "Vehicle",
+    "propulsion": "Propulsion",
+    "stability": "Stability",
+    "aerodynamics": "Aerodynamics",
+    "structural": "Structural",
+    "environment": "Environment",
+    "trajectory": "Trajectory",
+    "recovery": "Recovery",
+    "mission": "Mission",
+}
 
 
-def _score_band(
+@dataclass(frozen=True)
+class Criterion:
+    """One rule, evaluated against one measurement.
+
+    The report is built out of these rather than out of a formula, so every
+    point deducted can be traced to a specific number crossing a specific
+    threshold.
+    """
+
+    id: str
+    label: str
+    #: What was measured.
+    measured: float
+    unit: str
+    #: The acceptable band. `None` on either side means unbounded.
+    good_min: Optional[float]
+    good_max: Optional[float]
+    #: Points available for this criterion.
+    weight: float
+    #: Points earned, 0 to `weight`.
+    earned: float
+    #: What this measurement means, in a sentence.
+    note: str
+    #: What to change, when it fell short.
+    recommendation: Optional[str] = None
+
+    @property
+    def passed(self) -> bool:
+        return self.earned >= self.weight * 0.999
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "measured": round(self.measured, 4),
+            "unit": self.unit,
+            "good_min": self.good_min,
+            "good_max": self.good_max,
+            "weight": self.weight,
+            "earned": round(self.earned, 2),
+            "passed": self.passed,
+            "note": self.note,
+            "recommendation": self.recommendation,
+        }
+
+
+@dataclass(frozen=True)
+class CategoryScore:
+    """One scored category."""
+
+    id: str
+    label: str
+    #: 0–100.
+    score: float
+    #: The criteria that produced it.
+    criteria: List[Criterion] = field(default_factory=list)
+    #: A one-line summary of the category's state.
+    summary: str = ""
+    #: True when no criterion in this category could be evaluated.
+    not_applicable: bool = False
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "score": round(self.score),
+            "summary": self.summary,
+            "not_applicable": self.not_applicable,
+            "criteria": [c.to_dict() for c in self.criteria],
+        }
+
+
+@dataclass(frozen=True)
+class MissionEvaluation:
+    """The complete report."""
+
+    overall_score: float
+    categories: List[CategoryScore]
+    #: What the design did well, in the order a reviewer would say it.
+    strengths: List[str]
+    #: What cost it the most points, worst first.
+    weaknesses: List[str]
+    #: Concrete changes, ordered by how much they would recover.
+    recommendations: List[str]
+    #: Stated limits of what this evaluation can see.
+    limitations: List[str]
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "overall_score": round(self.overall_score),
+            "categories": [c.to_dict() for c in self.categories],
+            "strengths": self.strengths,
+            "weaknesses": self.weaknesses,
+            "recommendations": self.recommendations,
+            "limitations": self.limitations,
+        }
+
+
+# ──────────────────────────────────────────────────────────────
+# Scoring helpers
+# ──────────────────────────────────────────────────────────────
+
+
+def _band_score(
     measured: float,
     good_min: Optional[float],
     good_max: Optional[float],
     weight: float,
-) -> tuple:
-    """Points earned, and whether the criterion passed.
+    *,
+    tolerance: float = 0.5,
+) -> float:
+    """
+    Points earned for a value against an acceptable band.
 
-    Returns `(earned, passed)`.
+    Full marks inside the band. Outside it, marks fall off linearly over a
+    tolerance window expressed as a fraction of the band's width, reaching zero
+    at the far edge of that window. A cliff at the threshold would make a
+    design that is 1% out look identical to one that is 200% out, which teaches
+    the wrong lesson: engineering margins are gradients, not switches.
     """
     if good_min is not None and good_max is not None:
         if good_min <= measured <= good_max:
-            return weight, True
-        below = measured < good_min
-        bound = good_min if below else good_max
-        distance = (good_min - measured) if below else (measured - good_max)
-        scale = max(abs(bound), 1e-9)
-        fraction = max(0.0, 1.0 - distance / (scale * _FALLOFF))
-        return weight * fraction, False
+            return weight
+        width = max(good_max - good_min, 1e-9)
+        distance = good_min - measured if measured < good_min else measured - good_max
+        return max(0.0, weight * (1.0 - distance / (width * tolerance * 2)))
 
     if good_min is not None:
         if measured >= good_min:
-            return weight, True
-        scale = max(abs(good_min), 1e-9)
-        fraction = max(0.0, 1.0 - (good_min - measured) / (scale * _FALLOFF))
-        return weight * fraction, False
+            return weight
+        span = max(abs(good_min) * tolerance, 1e-9)
+        return max(0.0, weight * (1.0 - (good_min - measured) / span))
 
     if good_max is not None:
         if measured <= good_max:
-            return weight, True
-        scale = max(abs(good_max), 1e-9)
-        fraction = max(0.0, 1.0 - (measured - good_max) / (scale * _FALLOFF))
-        return weight * fraction, False
+            return weight
+        span = max(abs(good_max) * tolerance, 1e-9)
+        return max(0.0, weight * (1.0 - (measured - good_max) / span))
 
-    return weight, True
+    return weight
 
 
-def _criterion(
-    id: str,
-    label: str,
-    measured: float,
-    *,
-    unit: str = "",
-    good_min: Optional[float] = None,
-    good_max: Optional[float] = None,
-    weight: float = 25.0,
-    note: str = "",
-    recommendation: Optional[str] = None,
-) -> EvaluationCriterion:
-    earned, passed = _score_band(measured, good_min, good_max, weight)
-    return EvaluationCriterion(
-        id=id,
-        label=label,
-        measured=float(measured),
-        unit=unit,
-        good_min=good_min,
-        good_max=good_max,
-        weight=weight,
-        earned=round(earned, 2),
-        passed=passed,
-        note=note,
-        recommendation=None if passed else recommendation,
-    )
+def _criteria_score(criteria: Sequence[Criterion]) -> float:
+    """Weighted score out of 100 from a set of criteria."""
+    usable = [c for c in criteria if c.weight > 0]
+    if not usable:
+        return 0.0
+    return 100.0 * sum(c.earned for c in usable) / sum(c.weight for c in usable)
 
 
 def _category(
-    id: str,
-    label: str,
-    criteria: Sequence[EvaluationCriterion],
-    summary_pass: str,
-    summary_fail: str,
-) -> EvaluationCategory:
-    total_weight = sum(c.weight for c in criteria) or 1.0
-    earned = sum(c.earned for c in criteria)
-    score = int(round(100 * earned / total_weight))
-    failures = [c for c in criteria if not c.passed]
-    return EvaluationCategory(
-        id=id,
-        label=label,
-        score=max(0, min(100, score)),
-        summary=summary_pass if not failures else summary_fail,
+    cat_id: str,
+    criteria: Sequence[Criterion],
+    summary: str,
+    score: Optional[float] = None,
+) -> CategoryScore:
+    """
+    Roll criteria up into a category score out of 100.
+
+    `score` overrides the weighted roll-up. It exists for the case the criteria
+    cannot express: a subsystem that *failed outright*. A propulsion system that
+    stopped working mid-flight did not score 78 on its criteria and then have an
+    unrelated accident — the criteria measured a design that no longer applies,
+    and the score has to say so.
+    """
+    usable = [c for c in criteria if c.weight > 0]
+    if not usable:
+        return CategoryScore(
+            id=cat_id,
+            label=CATEGORY_LABELS[cat_id],
+            score=0.0,
+            criteria=list(criteria),
+            summary="Not applicable to this design.",
+            not_applicable=True,
+        )
+    return CategoryScore(
+        id=cat_id,
+        label=CATEGORY_LABELS[cat_id],
+        score=score if score is not None else _criteria_score(criteria),
         criteria=list(criteria),
+        summary=summary,
     )
 
 
-def _not_applicable(id: str, label: str, reason: str) -> EvaluationCategory:
-    return EvaluationCategory(
-        id=id, label=label, score=0, summary=reason, not_applicable=True, criteria=[]
-    )
+def _peak(telemetry: Sequence[TelemetryPoint], attribute: str) -> float:
+    """Largest value of one channel across the flight."""
+    return max((getattr(p, attribute, 0.0) or 0.0) for p in telemetry) if telemetry else 0.0
+
+
+# ──────────────────────────────────────────────────────────────
+# The evaluation
+# ──────────────────────────────────────────────────────────────
 
 
 def evaluate_mission(
-    result: Any,
-    vehicle: Any,
-    mission: Any,
-    *,
-    telemetry: Optional[Sequence[Any]] = None,
+    result: SimResult,
+    vehicle: Vehicle,
+    mission: MissionConfig,
 ) -> MissionEvaluation:
     """
-    Score a completed flight.
+    Score a finished flight.
 
     Args:
-        result: The `SimResult` the engine produced.
-        vehicle: The `Vehicle` that was flown.
-        mission: The `MissionConfig` it was flown under.
-        telemetry: The undecimated telemetry. Defaults to `result.telemetry`;
-            the API passes the full series so the peaks the structural criteria
-            are measured against are not lost to decimation.
+        result: The completed simulation.
+        vehicle: The vehicle that flew, as the simulation saw it.
+        mission: The mission it was flying.
 
     Returns:
-        Nine scored categories, the strengths and weaknesses behind them, and an
-        ordered list of what to change, most recovery first.
+        A scored report with the measurements behind every number.
     """
-    samples = list(telemetry if telemetry is not None else result.telemetry)
+    telemetry = result.telemetry
     summary = result.summary
-    environment = mission.environment
+    failures = list(result.failures)
 
-    categories: List[EvaluationCategory] = [
-        _vehicle(vehicle, summary),
-        _stability(vehicle),
-        _propulsion(vehicle, summary),
-        _aerodynamics(summary, samples),
-        _structural(vehicle, summary, result),
-        _environment(environment, summary),
-        _trajectory(mission, summary, samples),
-        _mission_outcome(result, summary),
-        _recovery(vehicle, result),
+    categories = [
+        _score_vehicle(vehicle, summary),
+        _score_propulsion(vehicle, telemetry, summary, failures),
+        _score_stability(vehicle, telemetry, failures),
+        _score_aerodynamics(vehicle, telemetry, summary),
+        _score_structural(vehicle, summary, failures),
+        _score_environment(mission, summary, failures),
+        _score_trajectory(mission, result, summary),
+        _score_recovery(result, summary, failures),
+        _score_mission(result, mission, summary),
     ]
 
-    scored = [c for c in categories if not c.not_applicable]
-    overall = int(round(sum(c.score for c in scored) / max(len(scored), 1)))
+    applicable = [c for c in categories if not c.not_applicable]
+    overall = sum(c.score for c in applicable) / len(applicable) if applicable else 0.0
 
-    strengths = [
-        "{0}: {1}/100.".format(c.label, c.score) for c in scored if c.score >= 85
-    ]
-    weaknesses = []
-    recommendations = []
-
-    # Order what to fix by how many points it would recover, so the first
-    # suggestion is the one that changes the most.
-    losses = []
-    for category in scored:
-        for criterion in category.criteria:
-            if criterion.passed:
-                continue
-            lost = criterion.weight - criterion.earned
-            if lost < 1.0:
-                continue
-            losses.append((lost, category, criterion))
-
-    losses.sort(key=lambda item: item[0], reverse=True)
-
-    for lost, category, criterion in losses[:8]:
-        weaknesses.append(
-            "{0} — {1} measured {2}, against {3}. Cost {4:.0f} points.".format(
-                category.label,
-                criterion.label.lower(),
-                _format_measure(criterion.measured, criterion.unit),
-                _describe_band(criterion),
-                lost,
-            )
-        )
-        if criterion.recommendation:
-            recommendations.append(criterion.recommendation)
-
-    # Failures the simulation itself detected come first: they ended the flight.
-    for failure in result.failures:
-        recommendations.insert(0, failure.recommended_fix)
-
-    if not recommendations:
-        recommendations.append(
-            "Nothing is clearly wrong with this design. Try raising the target orbit, "
-            "adding payload, or flying it in worse weather to find where it breaks."
-        )
+    strengths, weaknesses, recommendations = _narrate(categories)
 
     return MissionEvaluation(
-        overall_score=max(0, min(100, overall)),
+        overall_score=overall,
         categories=categories,
         strengths=strengths,
         weaknesses=weaknesses,
-        recommendations=_dedupe(recommendations)[:6],
+        recommendations=recommendations,
         limitations=[
-            "The flight is a three-degree-of-freedom point-mass simulation. It does not model "
-            "the vehicle's rotational dynamics, so a design that would be uncontrollable in "
-            "pitch can still fly here.",
-            "Aerodynamics use a single drag coefficient with a Mach correction. There is no "
-            "lift, no base drag model and no fin interference.",
-            "The wind profile is built from one surface observation. A real launch commit uses "
-            "a balloon sounding taken hours before the window.",
-            "Earth's rotation is not added to the initial velocity, so an eastward launch does "
-            "not receive the free velocity it would in reality.",
-            "Structural limits are compared against a single rated value rather than against a "
-            "load path, so where a vehicle would break is not modelled — only that it would.",
+            "Scores measure how well the design was made, not whether the mission "
+            "succeeded. Those are separate facts and the report gives both.",
+            "The simulation models three degrees of freedom. Roll, yaw coupling and "
+            "aeroelastic effects are not simulated, so a design that would flutter "
+            "or spin will not be penalised for it here.",
+            "Earth's rotation is not modelled, so an eastward launch does not "
+            "collect the free velocity it would in reality.",
+            "Structural scoring compares loads against declared limits. It does not "
+            "analyse the structure itself.",
         ],
     )
 
 
-# ── Categories ────────────────────────────────────────────────
+def _score_vehicle(vehicle: Vehicle, summary) -> CategoryScore:
+    """Mass fractions and proportions — the design before it flies."""
+    criteria: List[Criterion] = []
 
+    total_dry = sum(s.dry_mass_kg for s in vehicle.stages) + vehicle.payload_mass_kg
+    total_propellant = sum(s.propellant_mass_kg for s in vehicle.stages)
+    launch_mass = max(vehicle.launch_mass_kg, 1e-6)
+    propellant_fraction = total_propellant / launch_mass
 
-def _vehicle(vehicle: Any, summary: Any) -> EvaluationCategory:
-    dry = sum(stage.dry_mass_kg for stage in vehicle.stages)
-    propellant = sum(stage.propellant_mass_kg for stage in vehicle.stages)
-    wet = dry + propellant + vehicle.payload_mass_kg
-    propellant_fraction = propellant / wet if wet > 0 else 0.0
-    payload_fraction = vehicle.payload_mass_kg / wet if wet > 0 else 0.0
-    fineness = vehicle.length_m / vehicle.diameter_m if vehicle.diameter_m > 0 else 0.0
+    criteria.append(
+        Criterion(
+            id="propellant_fraction",
+            label="Propellant mass fraction",
+            measured=propellant_fraction,
+            unit="",
+            good_min=0.70,
+            good_max=0.95,
+            weight=35,
+            earned=_band_score(propellant_fraction, 0.70, 0.95, 35),
+            note=(
+                "Reaching orbit needs a mass ratio near 17, which means about 94% "
+                "propellant. A vehicle carrying much less than 70% is mostly structure "
+                "and will not go far."
+            ),
+            recommendation=(
+                None
+                if propellant_fraction >= 0.70
+                else "Add propellant, or take mass out of the structure. The rocket "
+                "equation is logarithmic, so structural mass costs more than "
+                "propellant buys."
+            ),
+        )
+    )
 
+    fineness = vehicle.length_m / max(vehicle.diameter_m, 1e-6)
+    criteria.append(
+        Criterion(
+            id="fineness_ratio",
+            label="Fineness ratio",
+            measured=fineness,
+            unit="",
+            good_min=8,
+            good_max=25,
+            weight=20,
+            earned=_band_score(fineness, 8, 25, 20),
+            note=(
+                "Length over diameter. Below 8 the vehicle is a barrel and carries "
+                "heavy drag for its volume; above 25 it becomes a bending problem."
+            ),
+            recommendation=(
+                None
+                if 8 <= fineness <= 25
+                else "Adjust the ratio of body length to diameter toward the 8–25 band."
+            ),
+        )
+    )
+
+    payload_fraction = vehicle.payload_mass_kg / launch_mass
+    criteria.append(
+        Criterion(
+            id="payload_fraction",
+            label="Payload fraction",
+            measured=payload_fraction,
+            unit="",
+            good_min=0.005,
+            good_max=None,
+            weight=25,
+            earned=_band_score(payload_fraction, 0.005, None, 25),
+            note=(
+                "Payload as a share of launch mass. Real launchers manage 1–4% to low "
+                "Earth orbit; a vehicle carrying nothing has no mission."
+            ),
+            recommendation=(
+                None
+                if payload_fraction >= 0.005
+                else "Add payload. A vehicle with none is a test article, not a mission."
+            ),
+        )
+    )
+
+    stage_count = len(vehicle.stages)
+    criteria.append(
+        Criterion(
+            id="staging_count",
+            label="Number of stages",
+            measured=float(stage_count),
+            unit="",
+            good_min=1,
+            good_max=3,
+            weight=20,
+            earned=_band_score(float(stage_count), 1, 3, 20),
+            note=(
+                "One to three stages is where essentially every real vehicle lands. "
+                "Beyond three, the mass of extra interstages and separation systems "
+                "outweighs what staging returns."
+            ),
+            recommendation=(
+                None
+                if 1 <= stage_count <= 3
+                else "Consolidate into two or three stages."
+            ),
+        )
+    )
+
+    score = _criteria_score(criteria)
     return _category(
         "vehicle",
-        "Vehicle",
-        [
-            _criterion(
-                "propellant_fraction",
-                "Propellant mass fraction",
-                propellant_fraction,
-                unit="",
-                good_min=0.70,
-                good_max=0.95,
-                weight=40,
-                note="Launch vehicles run around 0.85–0.90. Below 0.7 the structure is carrying its own weight rather than the payload's.",
-                recommendation="Increase propellant relative to structure, or reduce dry mass. Below a 0.7 propellant fraction the rocket equation gives very little back.",
-            ),
-            _criterion(
-                "payload_fraction",
-                "Payload mass fraction",
-                payload_fraction,
-                unit="",
-                good_min=0.005,
-                good_max=0.06,
-                weight=25,
-                note="Real launchers deliver 1–4% of launch mass to orbit.",
-                recommendation="Add payload. A vehicle carrying nothing is a demonstration rather than a mission.",
-            ),
-            _criterion(
-                "fineness_ratio",
-                "Fineness ratio",
-                fineness,
-                unit="",
-                good_min=8.0,
-                good_max=25.0,
-                weight=20,
-                note="Length over diameter. Slender vehicles have less frontal area for the same volume.",
-                recommendation="A stubby vehicle pays for its frontal area in drag; an extremely slender one becomes hard to keep stiff. Aim for 10–20.",
-            ),
-            _criterion(
-                "stage_count",
-                "Stage count",
-                float(len(vehicle.stages)),
-                unit="",
-                good_min=1,
-                good_max=3,
-                weight=15,
-                note="Two or three stages is where almost every real launch vehicle lands.",
-                recommendation="Beyond three stages the mass of interstages and separation systems outweighs what staging returns.",
-            ),
-        ],
-        "Mass distribution and proportions are in the range real vehicles occupy.",
-        "The vehicle's proportions are outside the range that flies well.",
+        criteria,
+        _summarise(
+            score,
+            good="Well-proportioned, with a sensible mass breakdown.",
+            fair="Workable, though the mass breakdown leaves performance on the table.",
+            poor="The proportions are working against this design before it leaves the pad.",
+        ),
     )
 
 
-def _stability(vehicle: Any) -> EvaluationCategory:
-    return _category(
-        "stability",
-        "Stability",
-        [
-            _criterion(
-                "margin_wet",
-                "Static margin, full",
-                vehicle.stability_margin_wet_cal,
-                unit="cal",
-                good_min=1.0,
-                good_max=2.5,
-                weight=55,
-                note="Calibers of separation between centre of pressure and centre of gravity, at liftoff.",
-                recommendation="Below 1 caliber a gust is amplified rather than corrected. Increase fin area, or move mass forward.",
+def _score_propulsion(vehicle, telemetry, summary, failures) -> CategoryScore:
+    """Thrust, impulse and how much of the Δv budget survived."""
+    criteria: List[Criterion] = []
+
+    total_thrust = sum(s.thrust_sea_level_N for s in vehicle.stages[:1]) or (
+        vehicle.stages[0].thrust_sea_level_N if vehicle.stages else 0.0
+    )
+    weight_N = vehicle.launch_mass_kg * 9.80665
+    twr = total_thrust / weight_N if weight_N > 0 else 0.0
+
+    criteria.append(
+        Criterion(
+            id="liftoff_twr",
+            label="Liftoff thrust-to-weight",
+            measured=twr,
+            unit="",
+            good_min=1.2,
+            good_max=1.8,
+            weight=40,
+            earned=_band_score(twr, 1.2, 1.8, 40),
+            note=(
+                "Below 1.0 the vehicle cannot lift itself. Between 1.0 and 1.2 it "
+                "rises so slowly that gravity losses consume the budget. Above 1.8 it "
+                "reaches high dynamic pressure while still deep in the atmosphere."
             ),
-            _criterion(
-                "margin_dry",
-                "Static margin, empty",
-                vehicle.stability_margin_dry_cal,
-                unit="cal",
-                good_min=0.8,
-                good_max=3.5,
-                weight=45,
-                note="Propellant burns off from ahead of the engine, so the centre of gravity moves aft and the margin shrinks through the flight.",
-                recommendation="This design is stable full and marginal empty. Check the margin at burnout, not just on the pad.",
+            recommendation=(
+                None
+                if 1.2 <= twr <= 1.8
+                else (
+                    "Add thrust or remove mass — this will not leave the pad."
+                    if twr < 1.0
+                    else "Raise thrust toward a liftoff ratio of 1.2–1.5."
+                    if twr < 1.2
+                    else "Reduce thrust or add mass; this is accelerating harder than "
+                    "it needs to, and paying for it in drag and structural load."
+                )
             ),
-        ],
-        "Statically stable throughout the burn.",
-        "Static margin is outside the 1–2 caliber band somewhere in the flight.",
+        )
     )
 
-
-def _propulsion(vehicle: Any, summary: Any) -> EvaluationCategory:
-    first = vehicle.stages[0] if vehicle.stages else None
-    if first is None:
-        return _not_applicable("propulsion", "Propulsion", "This vehicle has no stages.")
-
-    launch_mass = vehicle.launch_mass_kg or 1.0
-    twr = first.thrust_sea_level_N / (launch_mass * 9.80665)
-    isp = first.isp_vacuum_s
-    total_impulse = sum(s.thrust_vacuum_N * s.burn_time_s for s in vehicle.stages)
-    dv_efficiency = (
-        summary.delta_v_achieved_ms / summary.delta_v_ideal_ms
-        if summary.delta_v_ideal_ms > 0
-        else 0.0
+    ideal = summary.delta_v_ideal_ms
+    achieved = summary.delta_v_achieved_ms
+    efficiency = achieved / ideal if ideal > 0 else 0.0
+    criteria.append(
+        Criterion(
+            id="delta_v_efficiency",
+            label="Δv realised",
+            measured=efficiency,
+            unit="",
+            good_min=0.55,
+            good_max=None,
+            weight=35,
+            earned=_band_score(efficiency, 0.55, None, 35),
+            note=(
+                "Peak speed reached against the ideal Δv the propellant contained. "
+                "Gravity and drag take 1.5–2 km/s of it on a launch to orbit; losing "
+                "much more than half means the trajectory is fighting itself."
+            ),
+            recommendation=(
+                None
+                if efficiency >= 0.55
+                else "Most of the propellant is going into gravity loss. Raise liftoff "
+                "thrust-to-weight, or pitch over earlier so the velocity vector turns "
+                "horizontal sooner."
+            ),
+        )
     )
+
+    gravity_loss = summary.gravity_loss_ms
+    criteria.append(
+        Criterion(
+            id="gravity_loss",
+            label="Gravity loss",
+            measured=gravity_loss,
+            unit="m/s",
+            good_min=None,
+            good_max=2000,
+            weight=25,
+            earned=_band_score(gravity_loss, None, 2000, 25),
+            note=(
+                "Velocity spent holding the vehicle up rather than accelerating it "
+                "downrange. A well-flown ascent keeps it near 1.2–1.5 km/s."
+            ),
+            recommendation=(
+                None
+                if gravity_loss <= 2000
+                else "Spend less time going straight up: raise thrust-to-weight or "
+                "start the pitchover lower."
+            ),
+        )
+    )
+
+    propulsion_failures = [f for f in failures if f.subsystem.value == "propulsion"]
+    score = _criteria_score(criteria)
+    if propulsion_failures:
+        # A propulsion failure is not a deduction against a criterion; it is a
+        # statement that the subsystem did not work.
+        score *= 0.4
 
     return _category(
         "propulsion",
-        "Propulsion",
-        [
-            _criterion(
-                "liftoff_twr",
-                "Liftoff thrust-to-weight",
-                twr,
-                unit="",
-                good_min=1.2,
-                good_max=2.0,
-                weight=40,
-                note="Below 1.0 nothing happens. Above about 2 the vehicle gets fast while still deep in dense air.",
-                recommendation=(
-                    "Below 1.2 the vehicle spends most of its propellant fighting gravity. "
-                    "Above 2.0 it reaches high dynamic pressure too low down. Aim for 1.2–1.5."
-                ),
-            ),
-            _criterion(
-                "specific_impulse",
-                "First-stage specific impulse",
-                isp,
-                unit="s",
-                good_min=240,
-                good_max=470,
-                weight=25,
-                note="Solids reach 250–280 s, kerolox 300–350, hydrolox up to 450.",
-                recommendation="An Isp outside 240–470 s is outside what chemical propulsion achieves. Check the engine selection.",
-            ),
-            _criterion(
-                "delta_v_efficiency",
-                "Δv realised",
-                dv_efficiency,
-                unit="",
-                good_min=0.55,
-                good_max=1.0,
-                weight=35,
-                note="Peak speed as a fraction of the ideal Δv the propellant contained.",
-                recommendation=(
-                    "Most of the propellant's energy went into gravity and drag rather than into speed. "
-                    "A higher thrust-to-weight or an earlier pitchover both reduce gravity loss."
-                ),
-            ),
-        ],
-        "Propulsion is sized and performing in the range real vehicles do.",
-        "Propulsion is outside the band that produces an efficient ascent.",
+        criteria,
+        _summarise(
+            score,
+            good="Thrust and impulse are well matched to the vehicle.",
+            fair="The propulsion works, but the trajectory is wasting some of it.",
+            poor="Propulsion is the limiting factor on this design.",
+        ),
+        score,
     )
 
 
-def _aerodynamics(summary: Any, samples: Sequence[Any]) -> EvaluationCategory:
-    max_q = summary.max_dynamic_pressure_Pa
-    drag_loss = summary.drag_loss_ms
-    max_alpha = summary.max_angle_of_attack_deg
-    q_alpha = summary.max_q_alpha_Padeg
+def _score_stability(vehicle, telemetry, failures) -> CategoryScore:
+    """Static margin, and how much the vehicle was actually disturbed."""
+    criteria: List[Criterion] = []
+
+    wet = vehicle.stability_margin_wet_cal
+    dry = vehicle.stability_margin_dry_cal
+
+    criteria.append(
+        Criterion(
+            id="static_margin_wet",
+            label="Static margin, fuelled",
+            measured=wet,
+            unit="cal",
+            good_min=1.0,
+            good_max=2.0,
+            weight=35,
+            earned=_band_score(wet, 1.0, 2.0, 35),
+            note=(
+                "Centre of pressure behind centre of gravity, in body diameters. Below "
+                "1 a gust upsets it; above 2 it weathercocks hard into any crosswind."
+            ),
+            recommendation=(
+                None
+                if 1.0 <= wet <= 2.0
+                else (
+                    "Increase fin area or move mass forward — the centre of pressure "
+                    "is ahead of the centre of gravity and the vehicle will tumble."
+                    if wet < 0
+                    else "Increase fin area or add nose ballast to reach 1 caliber."
+                    if wet < 1.0
+                    else "Reduce fin area. This is over-stable and will turn into the "
+                    "wind rather than flying where it was aimed."
+                )
+            ),
+        )
+    )
+
+    criteria.append(
+        Criterion(
+            id="static_margin_dry",
+            label="Static margin, empty",
+            measured=dry,
+            unit="cal",
+            good_min=1.0,
+            good_max=2.5,
+            weight=30,
+            earned=_band_score(dry, 1.0, 2.5, 30),
+            note=(
+                "Propellant burns off from ahead of the engine, so the centre of "
+                "gravity moves aft and the margin shrinks through the flight. This is "
+                "usually the harder case."
+            ),
+            recommendation=(
+                None
+                if dry >= 1.0
+                else "The vehicle becomes unstable as it empties. Move dry mass "
+                "forward, or increase fin area."
+            ),
+        )
+    )
+
+    max_aoa = max(
+        (math.degrees(p.angle_of_attack_rad) for p in telemetry if p.engine_on), default=0.0
+    )
+    criteria.append(
+        Criterion(
+            id="angle_of_attack",
+            label="Peak angle of attack, powered",
+            measured=max_aoa,
+            unit="°",
+            good_min=None,
+            good_max=12,
+            weight=35,
+            earned=_band_score(max_aoa, None, 12, 35),
+            note=(
+                "How far the vehicle flew off its own axis while under power. A "
+                "well-flown ascent keeps this near zero — that is the whole point of a "
+                "gravity turn."
+            ),
+            recommendation=(
+                None
+                if max_aoa <= 12
+                else "Soften the pitch program, or wait for calmer wind. A large angle "
+                "of attack at high dynamic pressure is a bending load."
+            ),
+        )
+    )
+
+    score = _criteria_score(criteria)
+    if any(f.subsystem.value == "aerodynamics" for f in failures):
+        score *= 0.5
 
     return _category(
+        "stability",
+        criteria,
+        _summarise(
+            score,
+            good="The vehicle flew where it was pointed.",
+            fair="Stable, but with less margin than is comfortable.",
+            poor="This vehicle is not reliably controllable.",
+        ),
+        score,
+    )
+
+
+def _score_aerodynamics(vehicle, telemetry, summary) -> CategoryScore:
+    """Drag, dynamic pressure and where max-Q landed."""
+    criteria: List[Criterion] = []
+
+    criteria.append(
+        Criterion(
+            id="drag_coefficient",
+            label="Drag coefficient",
+            measured=vehicle.drag_coefficient,
+            unit="",
+            good_min=None,
+            good_max=0.55,
+            weight=25,
+            earned=_band_score(vehicle.drag_coefficient, None, 0.55, 25),
+            note=(
+                "Subsonic Cd for the assembled vehicle. A slender vehicle with a "
+                "low-drag nose sits near 0.3; a blunt one with large fins climbs past 0.6."
+            ),
+            recommendation=(
+                None
+                if vehicle.drag_coefficient <= 0.55
+                else "Choose a lower-drag nose profile, or reduce fin area."
+            ),
+        )
+    )
+
+    drag_loss = summary.drag_loss_ms
+    criteria.append(
+        Criterion(
+            id="drag_loss",
+            label="Drag loss",
+            measured=drag_loss,
+            unit="m/s",
+            good_min=None,
+            good_max=400,
+            weight=35,
+            earned=_band_score(drag_loss, None, 400, 35),
+            note=(
+                "Velocity lost to the atmosphere. Real launch vehicles pay 100–300 m/s; "
+                "far more than that means too much frontal area, or too much speed too low."
+            ),
+            recommendation=(
+                None
+                if drag_loss <= 400
+                else "Reduce frontal area, or lower the liftoff thrust-to-weight so "
+                "the vehicle is slower through the dense air."
+            ),
+        )
+    )
+
+    max_q_altitude = summary.max_q_altitude_m
+    criteria.append(
+        Criterion(
+            id="max_q_altitude",
+            label="Max-Q altitude",
+            measured=max_q_altitude,
+            unit="m",
+            good_min=8_000,
+            good_max=16_000,
+            weight=40,
+            earned=_band_score(max_q_altitude, 8_000, 16_000, 40),
+            note=(
+                "Real launch vehicles peak between 8 and 16 km. Much lower means the "
+                "vehicle is accelerating hard in dense air; much higher means it is "
+                "climbing slowly and paying for it in gravity loss."
+            ),
+            recommendation=(
+                None
+                if 8_000 <= max_q_altitude <= 16_000
+                else "Adjust the liftoff thrust-to-weight to move max-Q into the "
+                "8–16 km band."
+            ),
+        )
+    )
+
+    score = _criteria_score(criteria)
+    return _category(
         "aerodynamics",
-        "Aerodynamics",
-        [
-            _criterion(
-                "max_q",
-                "Maximum dynamic pressure",
-                max_q / 1000.0,
-                unit="kPa",
-                good_max=45.0,
-                weight=30,
-                note="Typical launch vehicles peak at 30–40 kPa. It is what the airframe is sized against.",
-                recommendation="Reduce liftoff thrust-to-weight, or throttle through max-Q, so the vehicle is higher before it is fast.",
-            ),
-            _criterion(
-                "drag_loss",
-                "Drag loss",
-                drag_loss,
-                unit="m/s",
-                good_max=400.0,
-                weight=30,
-                note="Real launches lose 100–300 m/s to drag. More than that means too much frontal area, or too long in dense air.",
-                recommendation="Reduce diameter or drag coefficient, or climb faster through the lower atmosphere.",
-            ),
-            _criterion(
-                "angle_of_attack",
-                "Peak angle of attack",
-                max_alpha,
-                unit="°",
-                good_max=12.0,
-                weight=20,
-                note="Measured during powered atmospheric ascent only. A rocket has almost no tolerance for side loading.",
-                recommendation="Pitch over more gently, or fly a gravity turn so the vehicle follows its velocity vector instead of fighting it.",
-            ),
-            _criterion(
-                "q_alpha",
-                "Peak q·α",
-                q_alpha,
-                unit="Pa·deg",
-                good_max=250_000.0,
-                weight=20,
-                note="Dynamic pressure times angle of attack — the lateral bending load. The Shuttle's limit was around 240,000 Pa·deg.",
-                recommendation="Either the wind or the pitch program is putting the vehicle sideways to the airflow while dynamic pressure is high. Fly in calmer conditions or pitch more gently.",
-            ),
-        ],
-        "Aerodynamic loads stayed inside the range an airframe is normally built for.",
-        "Aerodynamic loads exceeded what a conventional airframe is sized to carry.",
+        criteria,
+        _summarise(
+            score,
+            good="Clean through the atmosphere.",
+            fair="The atmosphere is costing more than it should.",
+            poor="Aerodynamics are a major drag on this design, literally.",
+        ),
     )
 
 
-def _structural(vehicle: Any, summary: Any, result: Any) -> EvaluationCategory:
-    peak_g = summary.max_acceleration_g
-    q_margin = (
-        vehicle.max_dynamic_pressure_Pa / max(summary.max_dynamic_pressure_Pa, 1.0)
+def _score_structural(vehicle, summary, failures) -> CategoryScore:
+    """Loads carried against declared limits."""
+    criteria: List[Criterion] = []
+
+    max_q = summary.max_dynamic_pressure_Pa
+    limit_q = vehicle.max_dynamic_pressure_Pa
+    utilisation = max_q / limit_q if limit_q > 0 else 0.0
+    criteria.append(
+        Criterion(
+            id="dynamic_pressure_margin",
+            label="Dynamic pressure against limit",
+            measured=utilisation,
+            unit="",
+            good_min=None,
+            good_max=0.8,
+            weight=40,
+            earned=_band_score(utilisation, None, 0.8, 40),
+            note=(
+                f"Peak dynamic pressure was {max_q / 1000:.1f} kPa against a "
+                f"{limit_q / 1000:.0f} kPa limit. Flying above 80% of a structural "
+                "limit leaves nothing for a gust."
+            ),
+            recommendation=(
+                None
+                if utilisation <= 0.8
+                else "Throttle back through max-Q, or reduce liftoff thrust-to-weight."
+            ),
+        )
     )
-    structural_failures = sum(
-        1 for f in result.failures if f.subsystem.value in ("structure", "aerodynamics")
+
+    max_g = summary.max_acceleration_g
+    criteria.append(
+        Criterion(
+            id="peak_acceleration",
+            label="Peak acceleration",
+            measured=max_g,
+            unit="g",
+            good_min=None,
+            good_max=6.0,
+            weight=30,
+            earned=_band_score(max_g, None, 6.0, 30),
+            note=(
+                "Acceleration climbs through a burn as propellant is consumed. Crewed "
+                "vehicles limit it to about 3 g; uncrewed ones to whatever the payload "
+                "will take."
+            ),
+            recommendation=(
+                None
+                if max_g <= 6.0
+                else "Throttle down near the end of the burn, when the vehicle is "
+                "lightest and acceleration is highest."
+            ),
+        )
     )
+
+    q_alpha = summary.max_q_alpha_Padeg
+    criteria.append(
+        Criterion(
+            id="q_alpha",
+            label="Peak q·α",
+            measured=q_alpha,
+            unit="Pa·°",
+            good_min=None,
+            good_max=250_000,
+            weight=30,
+            earned=_band_score(q_alpha, None, 250_000, 30),
+            note=(
+                "Dynamic pressure times angle of attack: the lateral bending moment on "
+                "a long thin tube. This is the number a launch is scrubbed for on a "
+                "cloudless day."
+            ),
+            recommendation=(
+                None
+                if q_alpha <= 250_000
+                else "Wait for lighter wind, or soften the pitch program so the vehicle "
+                "flies closer to its own velocity vector."
+            ),
+        )
+    )
+
+    score = _criteria_score(criteria)
+    if any(f.subsystem.value == "structure" for f in failures):
+        # The airframe came apart. Whatever the margins said before that, they
+        # were wrong.
+        score = min(score, 20.0)
 
     return _category(
         "structural",
-        "Structural",
-        [
-            _criterion(
-                "peak_g",
-                "Peak acceleration",
-                peak_g,
-                unit="g",
-                good_max=8.0,
-                weight=40,
-                note="Uncrewed vehicles are typically limited by structure and payload to under 8 g. Crewed ones to about 3.",
-                recommendation="Throttle down near the end of the burn. Acceleration climbs as propellant burns off, so the peak is at cutoff.",
-            ),
-            _criterion(
-                "q_margin",
-                "Margin against rated max-Q",
-                q_margin,
-                unit="×",
-                good_min=1.25,
-                weight=35,
-                note="How much headroom the airframe had over the dynamic pressure it actually saw.",
-                recommendation="The flight came close to the airframe's rated limit. Either strengthen it or fly a profile that does not reach that dynamic pressure.",
-            ),
-            _criterion(
-                "structural_failures",
-                "Structural failures",
-                float(structural_failures),
-                unit="",
-                good_max=0.0,
-                weight=25,
-                note="Any structural or aerodynamic failure the simulation detected.",
-                recommendation="The airframe failed. Read the failure record for the measured value and the threshold it crossed.",
-            ),
-        ],
-        "The structure carried every load the flight imposed, with margin.",
-        "The structure was loaded beyond what it is rated for.",
+        criteria,
+        _summarise(
+            score,
+            good="Comfortable margin against every load limit.",
+            fair="Within limits, but without much room left.",
+            poor="This vehicle flew outside what its structure could carry.",
+        ),
+        score,
     )
 
 
-def _environment(environment: Any, summary: Any) -> EvaluationCategory:
-    wind = environment.wind_speed_ms
-    density_ratio = 1.0
-    # Standard-day sea-level density, for the comparison.
-    if environment.temperature_K > 0:
-        density = environment.pressure_Pa / (287.058 * environment.temperature_K)
-        density_ratio = density / 1.225
+def _score_environment(mission, summary, failures) -> CategoryScore:
+    """Whether the conditions were flyable, and whether they were used."""
+    criteria: List[Criterion] = []
+    environment = mission.environment
 
+    wind = environment.wind_speed_ms
+    criteria.append(
+        Criterion(
+            id="ground_wind",
+            label="Ground wind at launch",
+            measured=wind,
+            unit="m/s",
+            good_min=None,
+            good_max=15.0,
+            weight=35,
+            earned=_band_score(wind, None, 15.0, 35),
+            note=(
+                "Wind at the pad pushes the vehicle sideways while it is slow and its "
+                "control authority is weakest."
+            ),
+            recommendation=None if wind <= 15.0 else "Hold for lighter wind.",
+        )
+    )
+
+    deviation = summary.max_lateral_deviation_m
+    criteria.append(
+        Criterion(
+            id="lateral_deviation",
+            label="Lateral deviation from track",
+            measured=deviation,
+            unit="m",
+            good_min=None,
+            good_max=5_000,
+            weight=35,
+            earned=_band_score(deviation, None, 5_000, 35),
+            note=(
+                "How far crosswind carried the vehicle off the plane it was aimed "
+                "along. Real range safety corridors are narrower than most people expect."
+            ),
+            recommendation=(
+                None
+                if deviation <= 5_000
+                else "Launch on a calmer day, or aim into the crosswind to compensate."
+            ),
+        )
+    )
+
+    # Using measured weather is itself worth marks: a flight run on a standard
+    # day is a less meaningful result than one run on real conditions, and the
+    # report should say so rather than quietly treating them as equivalent.
+    used_live = environment.source not in ("standard_day", "")
+    criteria.append(
+        Criterion(
+            id="live_conditions",
+            label="Measured conditions used",
+            measured=1.0 if used_live else 0.0,
+            unit="",
+            good_min=1.0,
+            good_max=None,
+            weight=30,
+            earned=30.0 if used_live else 0.0,
+            note=(
+                f"Flown on observed conditions from {environment.source}."
+                if used_live
+                else "Flown on a standard day. The result is valid but idealised: real "
+                "air is rarely 15 °C, 1013 hPa and still."
+            ),
+            recommendation=(
+                None
+                if used_live
+                else "Pull the live weather for your launch site and fly it again — "
+                "surface density alone varies by nearly 19% across real conditions."
+            ),
+        )
+    )
+
+    score = _criteria_score(criteria)
     return _category(
         "environment",
-        "Environment",
-        [
-            _criterion(
-                "surface_wind",
-                "Surface wind",
-                wind,
-                unit="m/s",
-                good_max=15.0,
-                weight=35,
-                note="Ground wind limits for medium launch vehicles sit around 15 m/s sustained.",
-                recommendation="This is above the ground wind limit for a typical vehicle. Wait for a calmer window, or accept the lateral deviation.",
-            ),
-            _criterion(
-                "lateral_deviation",
-                "Lateral deviation from track",
-                summary.max_lateral_deviation_m / 1000.0,
-                unit="km",
-                good_max=5.0,
-                weight=35,
-                note="How far crosswind carried the vehicle off the plane it was aimed along.",
-                recommendation="Wind pushed the vehicle well off its intended ground track. A launch azimuth correction or calmer conditions would both help.",
-            ),
-            _criterion(
-                "air_density",
-                "Air density against standard",
-                density_ratio,
-                unit="×",
-                good_min=0.90,
-                good_max=1.10,
-                weight=30,
-                note="Denser air means proportionally more drag. This is context, not a fault of the design.",
-                recommendation="Conditions were well away from a standard day. The trajectory reflects that; it is not a design problem.",
-            ),
-        ],
-        "Conditions were within the range a launch would normally be committed in.",
-        "Conditions were outside normal launch commit criteria.",
+        criteria,
+        _summarise(
+            score,
+            good="Flown in conditions that were genuinely flyable.",
+            fair="The conditions were marginal.",
+            poor="The environment, not the vehicle, decided this flight.",
+        ),
     )
 
 
-def _trajectory(mission: Any, summary: Any, samples: Sequence[Any]) -> EvaluationCategory:
+def _score_trajectory(mission, result, summary) -> CategoryScore:
+    """Did it go where it was aimed."""
+    criteria: List[Criterion] = []
+
     target_m = mission.target.target_altitude_km * 1000.0
-    reached = summary.max_altitude_m / target_m if target_m > 0 else 0.0
-
-    final = samples[-1] if samples else None
-    periapsis_km = (final.periapsis_altitude_m / 1000.0) if final else -1.0
-    eccentricity = final.eccentricity if final else 1.0
-
-    is_orbital = mission.target.type.value != "suborbital"
-
-    criteria = [
-        _criterion(
-            "target_altitude",
-            "Target altitude reached",
-            reached,
-            unit="×",
+    reached = summary.max_altitude_m
+    ratio = reached / target_m if target_m > 0 else 0.0
+    criteria.append(
+        Criterion(
+            id="altitude_vs_target",
+            label="Apogee against target",
+            measured=ratio,
+            unit="",
             good_min=0.95,
-            good_max=1.35,
-            weight=40,
-            note="Apogee as a fraction of the mission's target altitude.",
-            recommendation="The vehicle did not reach its target. Either add Δv or lower the target.",
-        ),
-        _criterion(
-            "gravity_loss",
-            "Gravity loss",
-            summary.gravity_loss_ms,
-            unit="m/s",
-            good_max=1800.0,
-            weight=30,
-            note="Real ascents lose 1,200–1,500 m/s to gravity. More means too long spent climbing vertically.",
-            recommendation="Pitch over earlier so the thrust vector goes into horizontal velocity sooner.",
-        ),
-    ]
+            good_max=None,
+            weight=45,
+            earned=_band_score(ratio, 0.95, None, 45),
+            note=(
+                f"Reached {reached / 1000:.1f} km against a "
+                f"{target_m / 1000:.0f} km target."
+            ),
+            recommendation=(
+                None
+                if ratio >= 0.95
+                else "More Δv is needed: add propellant, improve specific impulse, or "
+                "reduce payload."
+            ),
+        )
+    )
+
+    final = result.telemetry[-1] if result.telemetry else None
+    periapsis = final.periapsis_altitude_m if final else 0.0
+    is_orbital = mission.target.type.value in ("leo", "meo", "geo", "escape")
 
     if is_orbital:
         criteria.append(
-            _criterion(
-                "periapsis",
-                "Periapsis altitude",
-                periapsis_km,
-                unit="km",
-                good_min=120.0,
-                weight=30,
-                note="The low point of the orbit must clear the atmosphere, or the trajectory intersects Earth.",
+            Criterion(
+                id="periapsis",
+                label="Final periapsis",
+                measured=periapsis,
+                unit="m",
+                good_min=100_000,
+                good_max=None,
+                weight=55,
+                earned=_band_score(periapsis, 100_000, None, 55),
+                note=(
+                    "Altitude alone never produces an orbit. Periapsis — the low point "
+                    "of the resulting ellipse — has to be above the atmosphere, or the "
+                    "trajectory intersects the planet."
+                ),
                 recommendation=(
-                    "Apogee was reached but periapsis is still inside the atmosphere, so this is a "
-                    "ballistic arc rather than an orbit. More of the burn needs to go into horizontal velocity."
+                    None
+                    if periapsis >= 100_000
+                    else "The trajectory is ballistic, not orbital. More of the burn "
+                    "needs to go into horizontal velocity: pitch over earlier."
                 ),
             )
         )
     else:
         criteria.append(
-            _criterion(
-                "eccentricity",
-                "Trajectory shape",
-                eccentricity,
-                unit="",
-                good_max=1.0,
-                weight=30,
-                note="A suborbital profile is expected to be a closed ballistic arc.",
+            Criterion(
+                id="downrange",
+                label="Downrange distance",
+                measured=summary.max_downrange_m,
+                unit="m",
+                good_min=None,
+                good_max=400_000,
+                weight=55,
+                earned=_band_score(summary.max_downrange_m, None, 400_000, 55),
+                note=(
+                    "How far downrange a suborbital profile travelled. A vertical "
+                    "sounding flight should land near where it started."
+                ),
+                recommendation=None,
             )
         )
 
+    score = _criteria_score(criteria)
     return _category(
         "trajectory",
-        "Trajectory",
         criteria,
-        "The flight followed a profile appropriate to its target.",
-        "The trajectory did not put the vehicle where the mission needed it.",
+        _summarise(
+            score,
+            good="Flew the profile it was set.",
+            fair="Close, but short of the target.",
+            poor="The trajectory did not achieve what the mission asked of it.",
+        ),
     )
 
 
-def _mission_outcome(result: Any, summary: Any) -> EvaluationCategory:
-    fatal = sum(1 for f in result.failures if f.is_terminal)
-    warnings = sum(1 for f in result.failures if not f.is_terminal)
+def _score_recovery(result, summary, failures) -> CategoryScore:
+    """Whether it came back, and whether that was survivable."""
+    recovery_failures = [f for f in failures if f.subsystem.value == "recovery"]
+    impact = summary.impact_speed_ms
 
-    return _category(
-        "mission",
-        "Mission",
-        [
-            _criterion(
-                "outcome",
-                "Objective achieved",
-                1.0 if result.success else 0.0,
-                unit="",
-                good_min=1.0,
-                weight=50,
-                note="Whether the mission met its stated objective.",
-                recommendation="The mission did not succeed. The failure analysis names the specific reason.",
-            ),
-            _criterion(
-                "terminal_failures",
-                "Terminal failures",
-                float(fatal),
-                unit="",
-                good_max=0.0,
-                weight=30,
-                note="Failures that ended the flight.",
-                recommendation="Address the terminal failure first; nothing downstream of it was exercised.",
-            ),
-            _criterion(
-                "warnings",
-                "Warnings raised",
-                float(warnings),
-                unit="",
-                good_max=2.0,
-                weight=20,
-                note="Non-terminal anomalies. A flight with none is either well-designed or under-tested.",
-                recommendation="Several systems ran outside their nominal bands. They did not end the flight, but they narrow the margin available for a worse day.",
-            ),
-        ],
-        "The mission met its objective without a terminal failure.",
-        "The mission did not complete as configured.",
-    )
-
-
-def _recovery(vehicle: Any, result: Any) -> EvaluationCategory:
-    recovery_failures = [f for f in result.failures if f.subsystem.value == "recovery"]
-
-    # Nothing in the simulation contract exposes a recovery system, so the only
-    # honest signal is whether recovery events occurred. Scoring a vehicle with
-    # no parachute as zero here would penalise every orbital design for not
-    # carrying hardware it has no use for.
-    recovery_events = [
-        event for event in result.events if "chute" in event.type or "recovery" in event.type
-    ]
-
-    if not recovery_events and not recovery_failures:
-        return _not_applicable(
-            "recovery",
-            "Recovery",
-            "No recovery system was exercised on this flight. Nothing to score.",
+    if impact is None:
+        # The vehicle did not return to the surface — it is in orbit, escaped,
+        # or was lost. Recovery is not applicable rather than zero, and the
+        # difference matters: scoring a successful orbital insertion zero for
+        # recovery would be nonsense.
+        return CategoryScore(
+            id="recovery",
+            label="Recovery",
+            score=0.0,
+            criteria=[],
+            summary="No recovery attempted — the vehicle did not return to the surface.",
+            not_applicable=True,
         )
 
+    criteria = [
+        Criterion(
+            id="impact_speed",
+            label="Impact speed",
+            measured=impact,
+            unit="m/s",
+            good_min=None,
+            good_max=10.0,
+            weight=70,
+            earned=_band_score(impact, None, 10.0, 70, tolerance=2.0),
+            note=(
+                "Touchdown speed. Under about 10 m/s most hardware survives; a "
+                "ballistic return at hundreds of metres per second does not."
+            ),
+            recommendation=(
+                None
+                if impact <= 10.0
+                else "Fit a parachute, or a larger canopy. Terminal velocity falls with "
+                "the square root of area, so halving the impact speed needs four times "
+                "the chute."
+            ),
+        ),
+        Criterion(
+            id="recovery_failures",
+            label="Recovery system failures",
+            measured=float(len(recovery_failures)),
+            unit="",
+            good_min=None,
+            good_max=0,
+            weight=30,
+            earned=30.0 if not recovery_failures else 0.0,
+            note=(
+                "A parachute deployed outside its rated speed does not save the "
+                "vehicle; it tears off."
+                if recovery_failures
+                else "Recovery sequence completed without a failure."
+            ),
+            recommendation=(
+                "Deploy the main chute lower, where the vehicle is slower and the "
+                "opening shock is survivable."
+                if recovery_failures
+                else None
+            ),
+        ),
+    ]
+
+    score = _criteria_score(criteria)
     return _category(
         "recovery",
-        "Recovery",
-        [
-            _criterion(
-                "deployments",
-                "Recovery events",
-                float(len(recovery_events)),
-                unit="",
-                good_min=1.0,
-                weight=50,
-                note="Deployment events the flight recorded.",
-                recommendation="Recovery hardware was carried but never deployed. Check the deployment conditions.",
-            ),
-            _criterion(
-                "recovery_failures",
-                "Recovery failures",
-                float(len(recovery_failures)),
-                unit="",
-                good_max=0.0,
-                weight=50,
-                note="Failures in the recovery subsystem.",
-                recommendation="The recovery system failed. A canopy deployed above its rated speed tears rather than decelerates.",
-            ),
-        ],
-        "Recovery worked as configured.",
-        "The recovery sequence did not complete.",
+        criteria,
+        _summarise(
+            score,
+            good="Came back in one piece.",
+            fair="Recovered, but harder than it should have been.",
+            poor="The vehicle did not survive its return.",
+        ),
     )
 
 
-# ── Helpers ───────────────────────────────────────────────────
+def _score_mission(result, mission, summary) -> CategoryScore:
+    """The outcome, and how cleanly it was reached."""
+    criteria = [
+        Criterion(
+            id="outcome",
+            label="Mission outcome",
+            measured=1.0 if result.success else 0.0,
+            unit="",
+            good_min=1.0,
+            good_max=None,
+            weight=50,
+            earned=50.0 if result.success else 0.0,
+            note=f"Ended as {result.outcome.value}: {result.termination_reason}",
+            recommendation=None if result.success else "See the failure analysis below.",
+        ),
+        Criterion(
+            id="fatal_failures",
+            label="Fatal failures",
+            measured=float(
+                sum(1 for f in result.failures if f.severity == EventSeverity.FATAL)
+            ),
+            unit="",
+            good_min=None,
+            good_max=0,
+            weight=30,
+            earned=(
+                30.0
+                if not any(f.severity == EventSeverity.FATAL for f in result.failures)
+                else 0.0
+            ),
+            note="A fatal failure ends the mission at the moment it occurs.",
+            recommendation=None,
+        ),
+        Criterion(
+            id="warnings",
+            label="Warnings raised",
+            measured=float(
+                sum(1 for f in result.failures if f.severity == EventSeverity.WARNING)
+            ),
+            unit="",
+            good_min=None,
+            good_max=2,
+            weight=20,
+            earned=_band_score(
+                float(sum(1 for f in result.failures if f.severity == EventSeverity.WARNING)),
+                None,
+                2,
+                20,
+                tolerance=2.0,
+            ),
+            note=(
+                "Warnings are conditions the vehicle survived. Several of them usually "
+                "means the design is operating near several limits at once."
+            ),
+            recommendation=None,
+        ),
+    ]
+
+    score = _criteria_score(criteria)
+    return _category(
+        "mission",
+        criteria,
+        _summarise(
+            score,
+            good="Mission accomplished, cleanly.",
+            fair="The objective was met, with problems along the way.",
+            poor="The mission was not accomplished.",
+        ),
+    )
 
 
-def _format_measure(value: float, unit: str) -> str:
-    if abs(value) >= 1e6:
-        text = "{0:.2e}".format(value)
-    elif abs(value) >= 1000:
-        text = "{0:,.0f}".format(value)
-    elif abs(value) >= 10:
-        text = "{0:.1f}".format(value)
-    else:
-        text = "{0:.2f}".format(value)
-    return "{0} {1}".format(text, unit).strip()
+# ──────────────────────────────────────────────────────────────
+# Narration
+# ──────────────────────────────────────────────────────────────
 
 
-def _describe_band(criterion: EvaluationCriterion) -> str:
-    if criterion.good_min is not None and criterion.good_max is not None:
-        return "a target of {0}–{1} {2}".format(
-            criterion.good_min, criterion.good_max, criterion.unit
-        ).strip()
-    if criterion.good_min is not None:
-        return "a minimum of {0} {1}".format(criterion.good_min, criterion.unit).strip()
-    if criterion.good_max is not None:
-        return "a maximum of {0} {1}".format(criterion.good_max, criterion.unit).strip()
-    return "no limit"
+def _summarise(score: float, *, good: str, fair: str, poor: str) -> str:
+    if score >= 80:
+        return good
+    if score >= 55:
+        return fair
+    return poor
 
 
-def _dedupe(items: List[str]) -> List[str]:
-    seen = set()
-    out = []
-    for item in items:
-        if item in seen:
+def _narrate(categories: Sequence[CategoryScore]):
+    """
+    Turn the scored criteria into what a reviewer would actually say.
+
+    Recommendations are ordered by how many points each failing criterion cost,
+    so the first suggestion is the one that recovers the most — which is almost
+    never the one a beginner would try first.
+    """
+    strengths: List[str] = []
+    weaknesses: List[str] = []
+    scored: List[tuple] = []
+
+    for category in categories:
+        if category.not_applicable:
             continue
-        seen.add(item)
-        out.append(item)
-    return out
+        if category.score >= 85:
+            strengths.append(f"{category.label}: {category.summary}")
+        for criterion in category.criteria:
+            deficit = criterion.weight - criterion.earned
+            if deficit <= 0.01:
+                continue
+            scored.append((deficit, category, criterion))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+
+    for deficit, category, criterion in scored[:5]:
+        weaknesses.append(
+            "{0} — {1} is {2:.2f} {3}, against a target of {4}. Cost {5:.0f} points.".format(
+                category.label,
+                criterion.label,
+                criterion.measured,
+                criterion.unit or "",
+                _describe_band(criterion),
+                deficit,
+            ).replace("  ", " ")
+        )
+
+    recommendations = []
+    seen = set()
+    for _, _, criterion in scored:
+        if criterion.recommendation and criterion.recommendation not in seen:
+            recommendations.append(criterion.recommendation)
+            seen.add(criterion.recommendation)
+        if len(recommendations) >= 5:
+            break
+
+    if not strengths:
+        best = max(
+            (c for c in categories if not c.not_applicable),
+            key=lambda c: c.score,
+            default=None,
+        )
+        if best:
+            strengths.append(
+                f"{best.label} is the strongest part of this design at "
+                f"{best.score:.0f}/100."
+            )
+
+    return strengths, weaknesses, recommendations
+
+
+def _describe_band(criterion: Criterion) -> str:
+    if criterion.good_min is not None and criterion.good_max is not None:
+        return f"{criterion.good_min:g}–{criterion.good_max:g}"
+    if criterion.good_min is not None:
+        return f"at least {criterion.good_min:g}"
+    if criterion.good_max is not None:
+        return f"no more than {criterion.good_max:g}"
+    return "any value"
