@@ -25,6 +25,7 @@ from ai.providers import (
     describe_configuration,
     resolve_provider_name,
 )
+from ai.providers.gemini import GEMINI_KEY_ENV
 from ai.providers.registry import AI_PROVIDER_ENV
 
 
@@ -278,6 +279,30 @@ class TestRegistry:
     def test_default_is_the_offline_fallback(self, monkeypatch):
         """No key configured must degrade honestly, not fail."""
         monkeypatch.delenv(AI_PROVIDER_ENV, raising=False)
+        for env in GEMINI_KEY_ENV:
+            monkeypatch.delenv(env, raising=False)
+        assert resolve_provider_name() == "extractive"
+
+    def test_a_configured_key_is_selected_without_being_named(self, monkeypatch):
+        """A deployment that sets a key should not also have to set a provider."""
+        monkeypatch.delenv(AI_PROVIDER_ENV, raising=False)
+        for env in GEMINI_KEY_ENV:
+            monkeypatch.delenv(env, raising=False)
+        monkeypatch.setenv(GEMINI_KEY_ENV[0], "test-key-not-used-for-a-request")
+        assert resolve_provider_name() == "gemini"
+
+    def test_an_explicit_provider_still_wins_over_a_present_key(self, monkeypatch):
+        """Auto-selection is a convenience, not an override."""
+        monkeypatch.setenv(GEMINI_KEY_ENV[0], "test-key-not-used-for-a-request")
+        monkeypatch.setenv(AI_PROVIDER_ENV, "extractive")
+        assert resolve_provider_name() == "extractive"
+
+    def test_a_blank_key_does_not_count_as_configured(self, monkeypatch):
+        """An empty variable is how a key gets 'unset' in a .env file."""
+        monkeypatch.delenv(AI_PROVIDER_ENV, raising=False)
+        for env in GEMINI_KEY_ENV:
+            monkeypatch.delenv(env, raising=False)
+        monkeypatch.setenv(GEMINI_KEY_ENV[0], "   ")
         assert resolve_provider_name() == "extractive"
 
     def test_environment_variable_selects_the_provider(self, monkeypatch):

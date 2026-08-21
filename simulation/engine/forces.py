@@ -19,11 +19,14 @@ Sign conventions
 
 from __future__ import annotations
 
+import math
 from typing import NamedTuple
 
 from simulation.models.atmosphere import (
+    STANDARD_DAY,
+    AtmosphereConditions,
     AtmosphereState,
-    atmosphere,
+    atmosphere_with_conditions,
     dynamic_pressure,
     mach_number,
 )
@@ -35,8 +38,11 @@ from simulation.models.gravity import (
     gravity_acceleration_central,
     magnitude,
     scale,
+    dot,
+    sub,
     vec3,
 )
+from simulation.models.wind import WindProfile, WindState, wind_at_altitude
 
 
 class ForceState(NamedTuple):
@@ -58,10 +64,16 @@ class ForceState(NamedTuple):
     atmosphere: AtmosphereState
     #: Dynamic pressure. Unit: Pa.
     dynamic_pressure_Pa: float
-    #: Mach number.
+    #: Mach number, computed from airspeed rather than ground speed.
     mach: float
     #: Altitude above mean sea level. Unit: m.
     altitude_m: float
+    #: Wind at this altitude, in ENU axes.
+    wind: WindState
+    #: Speed relative to the air mass. Unit: m/s.
+    airspeed_ms: float
+    #: Angle between the airflow and the vehicle's own axis. Unit: rad.
+    angle_of_attack_rad: float
 
 
 def compute_forces(
@@ -75,6 +87,8 @@ def compute_forces(
     reference_area_m2: float,
     site_altitude_m: float,
     use_mach_drag_rise: bool = True,
+    wind_profile: WindProfile | None = None,
+    conditions: AtmosphereConditions = STANDARD_DAY,
 ) -> ForceState:
     """
     Evaluate thrust, drag, and gravity at one instant.
@@ -89,23 +103,58 @@ def compute_forces(
         reference_area_m2: Aerodynamic reference area. Unit: m².
         site_altitude_m: Launch site elevation. Unit: m.
         use_mach_drag_rise: Apply the transonic drag-rise correction.
+        wind_profile: Launch-day surface wind. `None` means still air.
+        conditions: Measured surface weather. Defaults to a standard day.
 
     Returns:
         The net acceleration and every intermediate quantity.
+
+    Notes:
+        Aerodynamics act on the velocity *relative to the air*, not on the
+        velocity relative to the ground. With wind present the two differ, and
+        every aerodynamic quantity here — drag, dynamic pressure, Mach number,
+        angle of attack — is computed from the relative velocity. Using ground
+        speed instead is the mistake that makes a crosswind look free.
     """
     altitude_m = altitude_from_enu(position, site_altitude_m)
-    atm = atmosphere(altitude_m)
-    speed = magnitude(velocity)
+    atm = atmosphere_with_conditions(altitude_m, conditions)
 
-    mach = mach_number(speed, atm)
-    q = dynamic_pressure(speed, atm.density_kgm3)
+    # Wind is profiled against height above the pad, which is what a surface
+    # observation is referenced to.
+    height_agl_m = altitude_m - site_altitude_m
+    wind = (
+        wind_at_altitude(height_agl_m, wind_profile)
+        if wind_profile is not None
+        else WindState(0.0, 0.0, 0.0, 0.0, 0.0)
+    )
+    wind_vector = vec3(wind.east_ms, wind.north_ms, wind.up_ms)
+
+    # Airspeed: the vehicle's motion through the air mass it is flying in.
+    air_velocity = sub(velocity, wind_vector)
+    airspeed = magnitude(air_velocity)
+
+    mach = mach_number(airspeed, atm)
+    q = dynamic_pressure(airspeed, atm.density_kgm3)
 
     cd = (
         effective_drag_coefficient(drag_coefficient, mach)
         if use_mach_drag_rise
         else drag_coefficient
     )
-    drag = drag_force(velocity, atm.density_kgm3, cd, reference_area_m2)
+    drag = drag_force(air_velocity, atm.density_kgm3, cd, reference_area_m2)
+
+    # Angle of attack: the angle between where the vehicle points and where the
+    # air is coming from. Its product with dynamic pressure is the lateral
+    # structural load, which is why a launch is scrubbed for upper-level wind
+    # shear even in clear weather at the pad.
+    angle_of_attack_rad = 0.0
+    if airspeed > 1.0:
+        heading = scale(air_velocity, 1.0 / airspeed)
+        axis_magnitude = magnitude(thrust_direction)
+        if axis_magnitude > 1e-9:
+            axis = scale(thrust_direction, 1.0 / axis_magnitude)
+            cosine = max(-1.0, min(1.0, dot(heading, axis)))
+            angle_of_attack_rad = math.acos(cosine)
 
     thrust = scale(thrust_direction, thrust_N)
 
@@ -131,6 +180,9 @@ def compute_forces(
         dynamic_pressure_Pa=q,
         mach=mach,
         altitude_m=altitude_m,
+        wind=wind,
+        airspeed_ms=airspeed,
+        angle_of_attack_rad=angle_of_attack_rad,
     )
 
 

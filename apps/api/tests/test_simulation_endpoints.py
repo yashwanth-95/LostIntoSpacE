@@ -47,7 +47,15 @@ class TestEngineAvailability:
     def test_health_engines_reports_every_engine(self, client):
         body = client.get("/api/v1/health/engines").json()
         assert body["status"] == "success"
-        assert set(body["data"]) == {"simulation", "search", "ai"}
+        # Every engine the API can reach across the seam, including the two
+        # added for the reference catalogue and launch-site weather.
+        assert set(body["data"]) == {
+            "simulation",
+            "search",
+            "ai",
+            "catalog",
+            "environment",
+        }
 
     def test_the_simulation_engine_is_reachable(self, client):
         body = client.get("/api/v1/health/engines").json()
@@ -126,6 +134,88 @@ class TestRunningASimulation:
             "/api/v1/simulations/run", json={"config": suborbital_config}
         ).json()["data"]
         assert data["final_state"] == "SURFACE"
+
+
+class TestEvaluationAccompaniesEveryRun:
+    """The brief is explicit that evaluation data may never be empty.
+
+    Every run carries a scored report, and every score has to be traceable to a
+    measurement — a number with no working shown teaches nothing.
+    """
+
+    def test_every_run_carries_an_evaluation(self, orbital_run):
+        meta = orbital_run["meta"]
+        assert meta["evaluated"] is True
+        assert meta["evaluation"] is not None
+
+    def test_it_scores_all_nine_categories(self, orbital_run):
+        categories = orbital_run["meta"]["evaluation"]["categories"]
+        assert {c["id"] for c in categories} == {
+            "vehicle",
+            "propulsion",
+            "stability",
+            "aerodynamics",
+            "structural",
+            "environment",
+            "trajectory",
+            "recovery",
+            "mission",
+        }
+
+    def test_every_score_shows_its_working(self, orbital_run):
+        for category in orbital_run["meta"]["evaluation"]["categories"]:
+            if category["not_applicable"]:
+                continue
+            assert 0 <= category["score"] <= 100
+            assert category["criteria"], f"{category['id']} scored with no criteria"
+            for criterion in category["criteria"]:
+                # A measured value, a threshold, and the points it cost.
+                assert criterion["unit"] is not None
+                assert criterion["note"]
+                assert 0 <= criterion["earned"] <= criterion["weight"]
+
+    def test_a_failing_criterion_carries_a_recommendation(self, orbital_run):
+        evaluation = orbital_run["meta"]["evaluation"]
+        failed = [
+            criterion
+            for category in evaluation["categories"]
+            for criterion in category["criteria"]
+            if not criterion["passed"]
+        ]
+        for criterion in failed:
+            assert criterion["recommendation"] or criterion["note"], (
+                f"{criterion['id']} lost points without saying what to do"
+            )
+
+    def test_it_states_what_it_cannot_see(self, orbital_run):
+        # An educational evaluation that does not state its own limits is
+        # teaching something false about engineering.
+        assert orbital_run["meta"]["evaluation"]["limitations"]
+
+    def test_a_hopeless_design_scores_badly_and_says_why(self, client, orbital_config):
+        config = json.loads(json.dumps(orbital_config))
+        for stage in config["vehicle"]["stages"]:
+            stage["thrust_vacuum_N"] = 1000.0
+            stage["thrust_sea_level_N"] = 1000.0
+
+        body = client.post("/api/v1/simulations/run", json={"config": config}).json()
+        evaluation = body["meta"]["evaluation"]
+
+        assert evaluation["overall_score"] < 60
+        propulsion = next(c for c in evaluation["categories"] if c["id"] == "propulsion")
+        assert propulsion["score"] < 40
+        assert evaluation["recommendations"], "a bad design must be told what to change"
+
+    def test_an_orbital_flight_is_not_scored_on_recovery(self, orbital_run):
+        # Scoring a successful orbital insertion zero for recovery would be
+        # nonsense: there was nothing to recover.
+        recovery = next(
+            c for c in orbital_run["meta"]["evaluation"]["categories"] if c["id"] == "recovery"
+        )
+        if not any(
+            point["altitude_m"] < 100 for point in orbital_run["data"]["telemetry"][-3:]
+        ):
+            assert recovery["not_applicable"] is True
 
 
 class TestFailuresAreReported:

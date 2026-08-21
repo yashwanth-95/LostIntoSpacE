@@ -64,6 +64,8 @@ from simulation.engine.failures import (
     failure_event_type,
 )
 from simulation.engine.forces import compute_forces, ground_constrained_acceleration
+from simulation.models.atmosphere import AtmosphereConditions, atmosphere_with_conditions
+from simulation.models.wind import WindProfile
 from simulation.engine.guidance import (
     GuidanceCommand,
     angle_of_attack,
@@ -112,6 +114,10 @@ ORBIT_REPORTING_ALTITUDE_M = 100_000.0
 #: 0 m MSL both marks a stationary vehicle as airborne and lets it sink through
 #: the pad before impact is noticed.
 SURFACE_BAND_M = 0.5
+
+#: Above this altitude the air is too thin for aerodynamic loads to matter, so
+#: q-alpha and angle of attack stop being tracked. Unit: m.
+AERODYNAMIC_LOAD_CEILING_M = 70_000.0
 
 
 @dataclass
@@ -237,6 +243,28 @@ def run_simulation(config: SimConfig) -> SimResult:
     basis = enu_basis(site)
     integrate = get_integrator(config.settings.integrator.value)
 
+    # Launch-day weather, turned into the two objects the physics consumes: a
+    # non-standard-day atmosphere and a wind profile. Both default to the
+    # standard, still-air case when no observation was supplied, so a mission
+    # configured without weather flies exactly as it did before.
+    environment = config.mission.environment
+    conditions = AtmosphereConditions(
+        surface_temperature_K=environment.temperature_K,
+        surface_pressure_Pa=environment.pressure_Pa,
+        relative_humidity=environment.relative_humidity,
+        station_altitude_m=site.altitude_m,
+    )
+    wind_profile = (
+        WindProfile(
+            surface_speed_ms=environment.wind_speed_ms,
+            surface_direction_deg=environment.wind_direction_deg,
+            jet_speed_ms=environment.jet_wind_speed_ms,
+            latitude_deg=site.latitude_deg,
+        )
+        if environment.wind_speed_ms > 0.0
+        else None
+    )
+
     state = _initial_state(config)
     telemetry: List[TelemetryPoint] = []
     events: List[SimEvent] = []
@@ -257,6 +285,10 @@ def run_simulation(config: SimConfig) -> SimResult:
     gravity_loss_ms = 0.0
     drag_loss_ms = 0.0
     propellant_used_kg = 0.0
+    max_q_alpha_Padeg = 0.0
+    max_angle_of_attack_deg = 0.0
+    max_lateral_deviation_m = 0.0
+    max_wind_speed_ms = 0.0
 
     launch_mass_kg = _current_mass(config, state)
     next_sample_t = 0.0
@@ -380,7 +412,7 @@ def run_simulation(config: SimConfig) -> SimResult:
         state.command = command
 
         # --- 3. Thrust magnitude at this altitude ----------------------------
-        atm_here = atmosphere(altitude_m)
+        atm_here = atmosphere_with_conditions(altitude_m, conditions)
         thrust_N = 0.0
         mdot_kgs = 0.0
         if engine_on and stage is not None:
@@ -419,6 +451,8 @@ def run_simulation(config: SimConfig) -> SimResult:
                 reference_area_m2=config.vehicle.reference_area_m2,
                 site_altitude_m=site.altitude_m,
                 use_mach_drag_rise=config.settings.use_mach_drag_rise,
+                wind_profile=wind_profile,
+                conditions=conditions,
             )
             return ground_constrained_acceleration(
                 f.acceleration, p, v, site.altitude_m
@@ -434,6 +468,8 @@ def run_simulation(config: SimConfig) -> SimResult:
             reference_area_m2=config.vehicle.reference_area_m2,
             site_altitude_m=site.altitude_m,
             use_mach_drag_rise=config.settings.use_mach_drag_rise,
+            wind_profile=wind_profile,
+            conditions=conditions,
         )
 
         # Velocity-loss accounting. Both terms integrate the component of the
@@ -603,6 +639,36 @@ def run_simulation(config: SimConfig) -> SimResult:
         downrange_m = downrange_from_enu(state.position, site.altitude_m)
         max_downrange_m = max(max_downrange_m, downrange_m)
 
+        # Wind-derived loads. q-alpha is the product that decides whether a
+        # windy day is flyable: dynamic pressure alone is survivable, and a
+        # large angle of attack in thin air is survivable, but their product is
+        # a bending moment on the airframe and it is not.
+        #
+        # Only powered atmospheric ascent counts. A spent vehicle falling back
+        # tail-first sits at 180° angle of attack by definition, and letting
+        # that into the maximum would swamp the number that matters — the load
+        # the airframe carried while it was still being flown.
+        angle_of_attack_deg = math.degrees(forces.angle_of_attack_rad)
+        q_alpha_Padeg = forces.dynamic_pressure_Pa * angle_of_attack_deg
+        under_ascent_load = (
+            engine_on
+            and state.has_lifted_off
+            and state.velocity.z > 0.0
+            and altitude_m < AERODYNAMIC_LOAD_CEILING_M
+        )
+        if under_ascent_load:
+            max_q_alpha_Padeg = max(max_q_alpha_Padeg, q_alpha_Padeg)
+            max_angle_of_attack_deg = max(max_angle_of_attack_deg, angle_of_attack_deg)
+        max_wind_speed_ms = max(max_wind_speed_ms, forces.wind.speed_ms)
+
+        # Lateral deviation: how far the vehicle has been pushed off the plane
+        # it was aimed along. The intended ground track runs along the launch
+        # azimuth, so the deviation is the component perpendicular to it.
+        lateral_deviation_m = _lateral_deviation(
+            state.position, config.guidance.launch_azimuth_deg
+        )
+        max_lateral_deviation_m = max(max_lateral_deviation_m, abs(lateral_deviation_m))
+
         if state.t >= next_sample_t or new_failures or (next_state is not None):
             point = _build_telemetry(
                 config=config,
@@ -622,6 +688,8 @@ def run_simulation(config: SimConfig) -> SimResult:
                 elements=elements,
                 in_orbit=in_orbit,
                 engine_on=engine_on,
+                q_alpha_Padeg=q_alpha_Padeg,
+                lateral_deviation_m=lateral_deviation_m,
             )
             telemetry.append(point)
             last_telemetry = point
@@ -703,6 +771,10 @@ def run_simulation(config: SimConfig) -> SimResult:
         delta_v_ideal_ms=ideal_dv,
         gravity_loss_ms=gravity_loss_ms,
         drag_loss_ms=drag_loss_ms,
+        max_q_alpha_Padeg=max_q_alpha_Padeg,
+        max_angle_of_attack_deg=max_angle_of_attack_deg,
+        max_lateral_deviation_m=max_lateral_deviation_m,
+        max_wind_speed_ms=max_wind_speed_ms,
     )
 
     return SimResult(
@@ -738,6 +810,8 @@ def _build_telemetry(
     elements,
     in_orbit: bool,
     engine_on: bool,
+    q_alpha_Padeg: float = 0.0,
+    lateral_deviation_m: float = 0.0,
 ) -> TelemetryPoint:
     """Assemble one telemetry sample from the current flight state."""
     horizontal = math.sqrt(
@@ -773,7 +847,15 @@ def _build_telemetry(
         ambient_pressure_Pa=forces.atmosphere.pressure_Pa,
         pitch_rad=command.pitch_rad,
         yaw_rad=command.yaw_rad,
-        angle_of_attack_rad=angle_of_attack(state.velocity, command.thrust_direction),
+        # Angle of attack comes from the force model, which measured it against
+        # the airflow. Recomputing it here from ground velocity would disagree
+        # with the number the drag was actually calculated from.
+        angle_of_attack_rad=forces.angle_of_attack_rad,
+        airspeed_ms=forces.airspeed_ms,
+        wind_speed_ms=forces.wind.speed_ms,
+        wind_direction_deg=forces.wind.direction_deg,
+        q_alpha_Padeg=q_alpha_Padeg,
+        lateral_deviation_m=lateral_deviation_m,
         semi_major_axis_m=elements.semi_major_axis_m if elements else 0.0,
         eccentricity=elements.eccentricity if elements else 0.0,
         periapsis_altitude_m=elements.periapsis_altitude_m if elements else 0.0,
@@ -790,6 +872,22 @@ def _build_telemetry(
         mission_state=state.mission_state,
         phase=_phase_for(state.mission_state, engine_on),
     )
+
+
+def _lateral_deviation(position: Vec3, launch_azimuth_deg: float) -> float:
+    """
+    Signed distance from the intended ground track. Unit: m.
+
+    The intended track runs from the pad along the launch azimuth. Azimuth is
+    measured clockwise from north, so the unit vector along it is
+    ``(sin A, cos A)`` in ENU east/north, and the perpendicular — positive to
+    the right of track — is ``(cos A, -sin A)``. Projecting the ground position
+    onto that perpendicular gives how far crosswind has carried the vehicle.
+    """
+    azimuth = math.radians(launch_azimuth_deg)
+    right_east = math.cos(azimuth)
+    right_north = -math.sin(azimuth)
+    return position.x * right_east + position.y * right_north
 
 
 def _phase_for(mission_state: MissionState, engine_on: bool) -> FlightPhase:

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { RocketDesign } from '@lostintospace/simulation-engine/core/component-types';
 import type { LaunchSite, MissionType, SimConfig, SimResult, SimGuidance } from '@/types/simulation';
-import { LAUNCH_SITES } from '@/lib/simConfig';
+import { LAUNCH_SITES, type SimEnvironmentInput } from '@/lib/simConfig';
 
 /**
  * The workbench: one rocket, one mission, one flight, carried across pages.
@@ -25,7 +25,10 @@ export interface MissionSetup {
   launchSite: LaunchSite;
   guidanceMode: SimGuidance['mode'];
   launchAzimuthDeg: number;
-  windSpeedMs: number;
+  /** Measured conditions at the pad, or null until they are fetched. */
+  environment: SimEnvironmentInput | null;
+  /** The site the environment was fetched for, so a site change invalidates it. */
+  environmentSiteId: string | null;
 }
 
 export const DEFAULT_MISSION: MissionSetup = {
@@ -36,7 +39,8 @@ export const DEFAULT_MISSION: MissionSetup = {
   launchSite: LAUNCH_SITES[0],
   guidanceMode: 'pitch_program',
   launchAzimuthDeg: 90,
-  windSpeedMs: 0,
+  environment: null,
+  environmentSiteId: null,
 };
 
 interface MissionState {
@@ -51,8 +55,17 @@ interface MissionState {
   result: SimResult | null;
   /** The config that produced `result`, kept so a re-run is reproducible. */
   lastConfig: SimConfig | null;
-  /** Engine provenance for `result`. */
+  /** Engine provenance for `result`, including the evaluation report. */
   resultMeta: Record<string, unknown> | null;
+
+  /**
+   * A flight deliberately kept for comparison.
+   *
+   * Survives changes to the design, unlike `result` — that is the entire
+   * point. You keep a baseline, change one thing, fly again, and the
+   * comparison shows what your change did.
+   */
+  baseline: (SimResult & { label: string }) | null;
 
   setDesign: (design: RocketDesign, source?: MissionState['designSource']) => void;
   clearDesign: () => void;
@@ -63,6 +76,8 @@ interface MissionState {
     meta: Record<string, unknown> | null,
   ) => void;
   clearResult: () => void;
+  setBaseline: (result: SimResult, label: string) => void;
+  clearBaseline: () => void;
 }
 
 export const useMissionStore = create<MissionState>((set) => ({
@@ -72,6 +87,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   result: null,
   lastConfig: null,
   resultMeta: null,
+  baseline: null,
 
   setDesign: (design, source = 'blank') =>
     // A new design invalidates the previous flight: showing telemetry from a
@@ -86,4 +102,8 @@ export const useMissionStore = create<MissionState>((set) => ({
   setResult: (result, config, meta) => set({ result, lastConfig: config, resultMeta: meta }),
 
   clearResult: () => set({ result: null, lastConfig: null, resultMeta: null }),
+
+  setBaseline: (result, label) => set({ baseline: { ...result, label } }),
+
+  clearBaseline: () => set({ baseline: null }),
 }));

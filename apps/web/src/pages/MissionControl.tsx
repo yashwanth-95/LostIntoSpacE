@@ -70,7 +70,7 @@ export default function MissionControl() {
             <Badge
               variant={
                 result.outcome === 'success'
-                  ? 'emerald'
+                  ? 'nominal'
                   : result.outcome === 'partial'
                     ? 'warning'
                     : 'fatal'

@@ -45,6 +45,28 @@ EXPECTED_PUBLIC = {
     ("get", "/api/v1/space-objects"),
     ("get", "/api/v1/space-objects/categories"),
     ("get", "/api/v1/space-objects/{object_id}"),
+    # The reference catalog is curated content, not user data: objects, launch
+    # sites, science topics, experiments, real missions and the asset library.
+    # A visitor should be able to explore Mars and read about the rocket
+    # equation before deciding whether to create an account.
+    ("get", "/api/v1/catalog"),
+    ("get", "/api/v1/catalog/objects"),
+    ("get", "/api/v1/catalog/objects/field"),
+    ("get", "/api/v1/catalog/objects/{object_id}"),
+    ("get", "/api/v1/catalog/launch-sites"),
+    ("get", "/api/v1/catalog/launch-sites/{site_id}"),
+    ("get", "/api/v1/catalog/science"),
+    ("get", "/api/v1/catalog/science/{slug}"),
+    ("get", "/api/v1/catalog/experiments"),
+    ("get", "/api/v1/catalog/experiments/{experiment_id}"),
+    ("get", "/api/v1/catalog/missions"),
+    ("get", "/api/v1/catalog/missions/{mission_id}"),
+    ("get", "/api/v1/catalog/assets"),
+    ("get", "/api/v1/catalog/assets/{asset_id}"),
+    # Launch-site weather is a public observation about a public place. It is
+    # also required before a guest can fly a realistic mission.
+    ("get", "/api/v1/environment/weather/{site_id}"),
+    ("get", "/api/v1/environment/simulation-config/{site_id}"),
 }
 
 

@@ -125,6 +125,12 @@ class SimulationMeta(BaseModel):
     telemetry_points_returned: int
     #: True when the series was decimated to fit MAX_TELEMETRY_POINTS.
     telemetry_decimated: bool
+    #: True when a scored evaluation accompanies the result.
+    evaluated: bool = False
+    #: The scored mission evaluation: nine categories, each with the criteria
+    #: and measurements that produced its score. Computed on the undecimated
+    #: telemetry, so it sees the peaks the returned series may not contain.
+    evaluation: dict[str, Any] | None = None
     #: Reminder that travels with every result. The brief is explicit that
     #: approximate output must never be presented as flight-certified.
     fidelity_notice: str = (
@@ -152,3 +158,5 @@ class EngineStatusReport(BaseModel):
     simulation: EngineAvailability
     search: EngineAvailability
     ai: EngineAvailability
+    catalog: EngineAvailability
+    environment: EngineAvailability

@@ -196,6 +196,133 @@ function resolveThrottle(def: ComponentDef, placed: PlacedComponent): number {
  * @param registry - Registry resolving component definitions.
  * @returns Absolute geometry, in both the axial and station conventions.
  */
+
+// ============================================================
+// Automatic stacking
+// ============================================================
+
+/**
+ * Where each category sits along the vehicle, nose first.
+ *
+ * A rocket is not an unordered bag of parts: a nose cone goes on the front and
+ * an engine goes on the back, and no sane design does it the other way round.
+ * Encoding that order here means adding a component produces a vehicle rather
+ * than a pile — which is what `offset_z` defaulting to zero produced before,
+ * with every part sitting at the stage base on top of every other part.
+ *
+ * A caller that knows better can still say so. If *any* component in a stage
+ * carries a non-zero `offset_z`, that stage is treated as hand-placed and every
+ * offset in it is used verbatim — the automatic stack never second-guesses a
+ * deliberate layout. Mixing the two would be worse than either: it would move
+ * the parts a caller did not position while leaving the ones it did, producing
+ * a vehicle neither party asked for.
+ *
+ * `-1` marks a category that does not occupy axial length at all. Fins and
+ * landing legs are mounted on the *surface* of whatever is already there, and
+ * centering rings live inside it, so none of them make the vehicle longer.
+ */
+const STACK_ORDER: Readonly<Record<ComponentCategory, number>> = {
+  nose_cone: 0,
+  fairing: 0,
+  payload: 1,
+  avionics: 2,
+  guidance: 2,
+  sensor: 2,
+  battery: 2,
+  parachute: 3,
+  bulkhead: 4,
+  coupler: 5,
+  body: 6,
+  oxidizer_tank: 7,
+  fuel_tank: 8,
+  custom: 8,
+  interstage: 9,
+  motor_mount: 10,
+  engine: 11,
+  decoupler: 12,
+  heat_shield: 13,
+  // Surface-mounted or internal: present in the mass budget, absent from the
+  // length budget.
+  fin: -1,
+  landing_leg: -1,
+  centering_ring: -1,
+};
+
+/** Whether a category consumes axial length in the stack. */
+function occupiesAxialLength(category: ComponentCategory): boolean {
+  return (STACK_ORDER[category] ?? 6) >= 0;
+}
+
+/**
+ * Assign each component its position within a stage.
+ *
+ * Positions are measured up from the stage base, so the aft-most part sits at
+ * zero and the nose ends up highest. Components sharing a stack order keep the
+ * order they were added in, so two body tubes stay in the sequence the user
+ * built them.
+ *
+ * Surface-mounted parts are placed against the aft end of the airframe — where
+ * fins actually go — rather than at the stage base underneath the engine.
+ *
+ * @returns Axial offset for each component, keyed by instance id.
+ */
+function computeStackOffsets(
+  entries: readonly { placed: PlacedComponent; def: ComponentDef }[],
+  stageCount: number,
+): Map<string, number> {
+  const offsets = new Map<string, number>();
+
+  for (let stage = 0; stage < stageCount; stage++) {
+    const inStage = entries.filter((e) => e.placed.stageIndex === stage);
+    if (inStage.length === 0) continue;
+
+    // A stage where anything was positioned deliberately is left alone.
+    if (inStage.some((e) => e.placed.offset_z !== 0)) {
+      for (const entry of inStage) {
+        offsets.set(entry.placed.instanceId, entry.placed.offset_z);
+      }
+      continue;
+    }
+
+    const stacked = inStage
+      .filter((e) => occupiesAxialLength(e.def.category))
+      .sort((a, b) => (STACK_ORDER[b.def.category] ?? 6) - (STACK_ORDER[a.def.category] ?? 6));
+
+    // Build the stack from the tail forward.
+    let z = 0;
+    /** Where the airframe proper begins, for mounting fins against. */
+    let airframeBase = 0;
+    let sawAirframe = false;
+
+    for (const entry of stacked) {
+      const position = z;
+      offsets.set(entry.placed.instanceId, position);
+      z += entry.def.length_m;
+
+      // The first tube-like component above the propulsion section marks where
+      // external surfaces can attach.
+      const category = entry.def.category;
+      if (
+        !sawAirframe &&
+        (category === 'body' || category === 'fuel_tank' || category === 'oxidizer_tank')
+      ) {
+        airframeBase = position;
+        sawAirframe = true;
+      }
+    }
+
+    for (const entry of inStage) {
+      if (occupiesAxialLength(entry.def.category)) continue;
+      // Fins sit at the bottom of the airframe, which is where they belong
+      // aerodynamically: as far aft as possible, for the longest lever arm
+      // against the centre of gravity.
+      offsets.set(entry.placed.instanceId, airframeBase);
+    }
+  }
+
+  return offsets;
+}
+
 export function layoutDesign(
   design: RocketDesign,
   registry: ComponentRegistry,
@@ -213,12 +340,20 @@ export function layoutDesign(
     resolvable.push({ placed, def });
   }
 
-  // Stage length is however far its tallest component reaches.
+  // Place every component within its stage. Without this each one sits at
+  // `offset_z` — which defaults to zero — and the whole vehicle collapses into
+  // a pile of overlapping parts at the stage base.
   const stageCount = design.stages.length;
+  const stackOffsets = computeStackOffsets(resolvable, stageCount);
+
+  // Stage length is however far its tallest component reaches.
   const stageLengths_m: number[] = new Array<number>(stageCount).fill(0);
   for (const { placed, def } of resolvable) {
     if (placed.stageIndex < 0 || placed.stageIndex >= stageCount) continue;
-    const top = placed.offset_z + def.length_m;
+    // Surface-mounted parts do not extend the stage: a fin bolted to the side
+    // of a tube does not make the rocket longer.
+    if (!occupiesAxialLength(def.category)) continue;
+    const top = (stackOffsets.get(placed.instanceId) ?? placed.offset_z) + def.length_m;
     if (top > stageLengths_m[placed.stageIndex]!) {
       stageLengths_m[placed.stageIndex] = top;
     }
@@ -238,7 +373,8 @@ export function layoutDesign(
 
   for (const { placed, def } of resolvable) {
     const stageBase = stageBasePositions_m[placed.stageIndex] ?? 0;
-    const axialPosition_m = stageBase + placed.offset_z;
+    const axialPosition_m =
+      stageBase + (stackOffsets.get(placed.instanceId) ?? placed.offset_z);
     const axialCenter_m = axialPosition_m + def.length_m / 2;
 
     const dryMass_kg = resolveDryMass(def, placed);

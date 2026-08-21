@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, Input, Spinner } from '@/components/ui';
 import { ai, type AIResponse } from '@/services/api';
+import { useAssistantContext } from '@/hooks/useAssistantContext';
 import { useMissionStore } from '@/stores/missionStore';
 
 /**
@@ -17,12 +18,29 @@ import { useMissionStore } from '@/stores/missionStore';
  * plainly rather than implying more capability than is present.
  */
 
-const SUGGESTIONS = [
+/** General questions, for a visitor who has not built anything yet. */
+const GENERAL_SUGGESTIONS = [
   'Why do rockets have multiple stages?',
   'What is specific impulse and why does it matter?',
   'What is max-Q and why do vehicles throttle down?',
   'Why does a rocket pitch over instead of flying straight up?',
   'What is a delta-v budget?',
+];
+
+/** Questions worth asking about a design that exists. */
+const DESIGN_SUGGESTIONS = [
+  'Is my rocket stable?',
+  'What is my thrust-to-weight ratio, and is it good?',
+  'What is limiting my delta-v?',
+  'What should I change first?',
+];
+
+/** Questions worth asking about a flight that has been flown. */
+const FLIGHT_SUGGESTIONS = [
+  'Why did my rocket fail?',
+  'How high did it go, and why not higher?',
+  'Where did my delta-v go?',
+  'Was the weather a factor?',
 ];
 
 interface Turn {
@@ -39,6 +57,21 @@ export default function Assistant() {
   const endRef = useRef<HTMLDivElement>(null);
 
   const result = useMissionStore((s) => s.result);
+  const design = useMissionStore((s) => s.design);
+
+  // What the user currently has open, sent with every question. This is the
+  // difference between "why is my rocket unstable" returning the theory of
+  // static margin and returning *this* rocket's 0.42 calibers.
+  const context = useAssistantContext();
+
+  // The prompts change with what the user actually has. Offering "why did my
+  // rocket fail?" to someone who has not flown anything is noise; withholding
+  // it from someone staring at a failure report is worse.
+  const suggestions = result
+    ? FLIGHT_SUGGESTIONS
+    : design
+      ? DESIGN_SUGGESTIONS
+      : GENERAL_SUGGESTIONS;
 
   useEffect(() => {
     ai.provider()
@@ -59,7 +92,7 @@ export default function Assistant() {
     setTurns((current) => [...current, { question: trimmed, response: null, error: null }]);
 
     try {
-      const response = await ai.ask(trimmed);
+      const response = await ai.ask(trimmed, context);
       setTurns((current) =>
         current.map((turn, i) => (i === current.length - 1 ? { ...turn, response } : turn)),
       );
@@ -79,7 +112,7 @@ export default function Assistant() {
         <div className="flex items-center gap-3 mb-1">
           <h1 className="font-display text-2xl font-semibold text-space-100">AI Assistant</h1>
           {provider && (
-            <Badge variant={provider === 'extractive' ? 'warning' : 'cyan'} className="text-2xs">
+            <Badge variant={provider === 'extractive' ? 'warning' : 'cryo'} className="text-2xs">
               {provider}
             </Badge>
           )}
@@ -112,7 +145,7 @@ export default function Assistant() {
         <div className="space-y-2">
           <p className="text-2xs text-space-500">Try one of these</p>
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTIONS.map((suggestion) => (
+            {suggestions.map((suggestion) => (
               <button
                 key={suggestion}
                 onClick={() => ask(suggestion)}

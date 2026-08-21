@@ -73,12 +73,33 @@ def provider_info() -> dict[str, Any]:
         raise _unavailable(exc) from exc
 
 
-async def ask(question: str) -> dict[str, Any]:
+async def ask(
+    question: str, context: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
-    Answer one question, grounded in the knowledge corpus.
+    Answer one question, grounded in the knowledge corpus and the user's own work.
+
+    `context` is what makes the difference between an assistant and a search
+    box. Without it, "why is my rocket unstable?" can only be answered with the
+    general theory of static margin. With it, the assistant is handed *this*
+    vehicle's centre of pressure, centre of gravity and margin in calibers, and
+    can answer about the design in front of the user.
+
+    The context is rendered into the same :class:`ContextItem` shape the
+    retrieval pipeline produces and passed as ``extra_context``, so the answer
+    cites the user's own measurements exactly as it cites a retrieved passage —
+    and the citation validator checks both the same way.
+
+    Everything in `context` is treated as untrusted data. Free text is
+    sanitized, and the workbench items are marked as describing a model rather
+    than the world, so a simulated apogee can never be reported as an
+    observation.
 
     Args:
         question: The user's question.
+        context: What the client is currently showing — the rocket, the
+            mission, the conditions, the last flight, the evaluation. Every
+            field is optional.
 
     Returns:
         The engine's ``AIResponse`` as a JSON-safe dict, including citations,
@@ -95,8 +116,32 @@ async def ask(question: str) -> dict[str, Any]:
         logger.exception("assistant construction failed")
         raise _unavailable(exc) from exc
 
-    response = await assistant.ask(question)
+    kwargs: dict[str, Any] = {}
+    items = _workbench_items(context)
+    if items:
+        kwargs["extra_context"] = items
+
+    response = await assistant.ask(question, **kwargs)
     return response.model_dump(mode="json")
+
+
+def _workbench_items(context: dict[str, Any] | None) -> list[Any]:
+    """Render the client's state into context items, or nothing.
+
+    A malformed context must never fail the request: the user asked a question,
+    and answering it generally is better than returning a 500 because a field
+    they never see was the wrong shape.
+    """
+    if not context:
+        return []
+    try:
+        ensure_engine_paths()
+        from ai.context.workbench import render_workbench_context
+
+        return render_workbench_context(context)
+    except Exception:  # noqa: BLE001 - context is an optimisation, not a requirement
+        logger.warning("workbench context could not be rendered", exc_info=True)
+        return []
 
 
 async def explain_failure(

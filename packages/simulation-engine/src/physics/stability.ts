@@ -48,10 +48,31 @@ export interface MassElement {
   readonly station_m: number;
 }
 
+/**
+ * Nose profiles the Barrowman nose term recognises.
+ *
+ * Kept structurally identical to `NoseConeShape` in `core/component-types`, but
+ * declared here rather than imported: `physics/` is a self-contained numerical
+ * layer with no dependency on the component domain model, and the parity test
+ * asserts the two lists stay in step.
+ */
+export type NoseProfile =
+  | 'conical'
+  | 'ogive'
+  | 'tangent_ogive'
+  | 'secant_ogive'
+  | 'von_karman'
+  | 'haack'
+  | 'elliptical'
+  | 'parabolic'
+  | 'power_series'
+  | 'blunt'
+  | 'custom';
+
 /** Nose cone geometry for the Barrowman nose term. */
 export interface NoseGeometry {
   /** Profile shape — determines where the nose CP sits. */
-  readonly shape: 'conical' | 'ogive' | 'parabolic' | 'haack';
+  readonly shape: NoseProfile;
   /** Nose length. Unit: m. */
   readonly length_m: number;
   /** Diameter at the nose base (= body diameter). Unit: m. */
@@ -102,13 +123,36 @@ export interface StabilityResult {
 /**
  * Fraction of the nose length at which a nose cone's centre of pressure sits.
  *
- * Values are the standard Barrowman results for each profile.
+ * These are the standard Barrowman results, and they are the reason nose
+ * profile is a design decision rather than styling: a conical nose puts its CP
+ * two-thirds of the way back, an elliptical one puts it a third of the way
+ * back, and swapping between them moves the vehicle's static margin by a
+ * meaningful fraction of a caliber with no other change.
+ *
+ * The ogive family shares 0.466 because tangent and secant ogives differ in
+ * generating radius rather than in where the resulting pressure distribution
+ * centres; the secant value drifts with the radius ratio and 0.466 is the
+ * usual working figure. The Haack family sits near mid-length, and von Kármán
+ * — which is the C = 0 member of that family — is treated as its own entry
+ * because it is the one people actually specify.
+ *
+ * Source: Barrowman (1967), NASA TN. Subsonic, small angle of attack.
  */
-const NOSE_CP_FRACTION: Readonly<Record<NoseGeometry['shape'], number>> = {
+const NOSE_CP_FRACTION: Readonly<Record<NoseProfile, number>> = {
   conical: 0.666,
   ogive: 0.466,
-  parabolic: 0.5,
+  tangent_ogive: 0.466,
+  secant_ogive: 0.466,
+  von_karman: 0.5,
   haack: 0.437,
+  elliptical: 0.333,
+  parabolic: 0.5,
+  power_series: 0.5,
+  // A blunted nose behaves close to an ellipsoid for CP purposes.
+  blunt: 0.4,
+  // A user-defined profile the engine cannot analyse. Mid-length is the least
+  // wrong assumption, and validation warns that the margin is an estimate.
+  custom: 0.5,
 };
 
 /**

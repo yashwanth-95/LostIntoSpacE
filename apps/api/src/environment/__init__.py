@@ -1,0 +1,1 @@
+"""Launch-day environmental conditions."""

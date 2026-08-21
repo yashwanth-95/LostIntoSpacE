@@ -230,6 +230,14 @@ export interface SimSummary {
   delta_v_ideal_ms: number;
   gravity_loss_ms: number;
   drag_loss_ms: number;
+  /** Peak lateral bending load during powered atmospheric ascent. Unit: Pa·deg. */
+  max_q_alpha_Padeg: number;
+  /** Peak angle of attack during powered atmospheric ascent. Unit: degrees. */
+  max_angle_of_attack_deg: number;
+  /** Furthest the vehicle was carried off its intended ground track. Unit: m. */
+  max_lateral_deviation_m: number;
+  /** Strongest wind encountered at any altitude. Unit: m/s. */
+  max_wind_speed_ms: number;
 }
 
 export interface SimResult {

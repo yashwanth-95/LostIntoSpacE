@@ -219,3 +219,160 @@ def dynamic_pressure(speed_ms: float, density_kgm3: float) -> float:
         Dynamic pressure. Unit: Pa.
     """
     return 0.5 * density_kgm3 * speed_ms * speed_ms
+
+
+# ──────────────────────────────────────────────────────────────
+# Non-standard day
+# ──────────────────────────────────────────────────────────────
+#
+# The US Standard Atmosphere describes an average day, and a launch never
+# happens on one. A hot, low-pressure, humid morning has measurably less dense
+# air than the standard model says, and less dense air means less drag, less
+# dynamic pressure, and less thrust from an air-breathing... — well, and a
+# different max-Q altitude for a rocket. When the platform has a real weather
+# observation for the pad, this is how it gets used.
+#
+# The corrections are the ones performance engineering actually applies:
+#
+#   * a surface temperature offset, decaying with altitude to zero in the
+#     stratosphere (a "hot day" / "cold day" shift of the whole profile),
+#   * a surface pressure ratio applied multiplicatively at every altitude,
+#   * a humidity correction, because water vapour is lighter than dry air.
+#
+# What is *not* modelled: the real vertical temperature structure of the day.
+# That needs a radiosonde. The offset approach is standard, documented, and
+# deliberately conservative — it is stated here rather than hidden.
+
+
+class AtmosphereConditions(NamedTuple):
+    """Measured surface conditions on launch day."""
+
+    #: Temperature at the surface. Unit: K.
+    surface_temperature_K: float = T0
+    #: Static pressure at the surface. Unit: Pa.
+    surface_pressure_Pa: float = P0
+    #: Relative humidity, 0–1.
+    relative_humidity: float = 0.0
+    #: Elevation the observation was taken at. Unit: m.
+    station_altitude_m: float = 0.0
+
+
+#: Standard-day conditions. Using this reproduces `atmosphere()` exactly.
+STANDARD_DAY = AtmosphereConditions()
+
+#: Altitude at which a surface temperature anomaly has fully decayed. Unit: m.
+_ANOMALY_DECAY_CEILING_M: float = 20_000.0
+
+#: Specific gas constant for dry air. Unit: J/(kg·K).
+R_DRY_AIR: float = 287.058
+
+#: Specific gas constant for water vapour. Unit: J/(kg·K).
+R_WATER_VAPOUR: float = 461.495
+
+
+def saturation_vapour_pressure(temperature_K: float) -> float:
+    """
+    Saturation vapour pressure of water over liquid, by the Tetens formula.
+
+    Args:
+        temperature_K: Air temperature. Unit: K.
+
+    Returns:
+        Saturation vapour pressure. Unit: Pa.
+
+    Reference: Tetens (1930), as given in Murray (1967), J. Appl. Meteorol. 6(1).
+    """
+    celsius = temperature_K - 273.15
+    if celsius <= -35.0:
+        # The formula's denominator approaches zero below about -35 °C. Air that
+        # cold holds so little water that treating it as dry is exact enough.
+        return 0.0
+    return 610.78 * math.exp(17.27 * celsius / (celsius + 237.3))
+
+
+def humid_air_density(
+    pressure_Pa: float, temperature_K: float, relative_humidity: float = 0.0
+) -> float:
+    """
+    Density of moist air.
+
+    Counter-intuitively, humid air is *less* dense than dry air at the same
+    pressure and temperature: a water molecule (18 g/mol) is lighter than the
+    nitrogen and oxygen (~29 g/mol) it displaces. The effect is small — a few
+    tenths of a percent — but it is real and free to include.
+
+    Args:
+        pressure_Pa: Total static pressure. Unit: Pa.
+        temperature_K: Air temperature. Unit: K.
+        relative_humidity: Relative humidity, 0–1.
+
+    Returns:
+        Air density. Unit: kg/m³.
+    """
+    if temperature_K <= 0.0:
+        return 0.0
+
+    humidity = min(max(relative_humidity, 0.0), 1.0)
+    vapour_pressure = humidity * saturation_vapour_pressure(temperature_K)
+    # Vapour pressure cannot exceed the total pressure.
+    vapour_pressure = min(vapour_pressure, pressure_Pa)
+    dry_pressure = pressure_Pa - vapour_pressure
+
+    return (
+        dry_pressure / (R_DRY_AIR * temperature_K)
+        + vapour_pressure / (R_WATER_VAPOUR * temperature_K)
+    )
+
+
+def atmosphere_with_conditions(
+    altitude_m: float, conditions: AtmosphereConditions = STANDARD_DAY
+) -> AtmosphereState:
+    """
+    Atmospheric conditions at an altitude, corrected for the measured weather.
+
+    Passing :data:`STANDARD_DAY` returns exactly what :func:`atmosphere` returns,
+    so the corrected path and the standard path agree by construction rather
+    than by coincidence.
+
+    Args:
+        altitude_m: Geometric altitude above mean sea level. Unit: m.
+        conditions: Measured surface conditions.
+
+    Returns:
+        Temperature, pressure, density and speed of sound, corrected.
+    """
+    standard = atmosphere(altitude_m)
+
+    # What the standard model says the surface looks like, so the anomaly is
+    # measured against the right baseline for a site at 90 m rather than 0 m.
+    station = atmosphere(conditions.station_altitude_m)
+
+    temperature_anomaly_K = conditions.surface_temperature_K - station.temperature_K
+    pressure_ratio = (
+        conditions.surface_pressure_Pa / station.pressure_Pa
+        if station.pressure_Pa > 0.0
+        else 1.0
+    )
+
+    # The temperature offset fades out with altitude: surface weather does not
+    # reach the stratosphere.
+    if altitude_m >= _ANOMALY_DECAY_CEILING_M:
+        decay = 0.0
+    else:
+        decay = max(0.0, 1.0 - altitude_m / _ANOMALY_DECAY_CEILING_M)
+
+    temperature = max(standard.temperature_K + temperature_anomaly_K * decay, 1.0)
+    pressure = max(standard.pressure_Pa * pressure_ratio, 0.0)
+
+    # Humidity is a surface-layer effect; above the troposphere the air is dry.
+    humidity = conditions.relative_humidity * decay
+
+    density = humid_air_density(pressure, temperature, humidity)
+    speed_of_sound = math.sqrt(GAMMA_AIR * R_AIR * temperature)
+
+    return AtmosphereState(
+        temperature_K=temperature,
+        pressure_Pa=pressure,
+        density_kgm3=density,
+        speed_of_sound_ms=speed_of_sound,
+    )

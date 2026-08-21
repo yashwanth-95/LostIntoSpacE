@@ -19,7 +19,7 @@
  */
 
 import { Suspense, lazy } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 
 import { AppShell } from '@/components/layout/AppShell';
 import { PublicLayout } from '@/components/layout/PublicLayout';
@@ -29,11 +29,17 @@ import { PageLoader } from '@/components/layout/PageLoader';
 import { useSessionRestore } from '@/hooks/useSessionRestore';
 
 const Landing = lazy(() => import('@/pages/Landing'));
+const ScienceTopic = lazy(() => import('@/pages/ScienceTopic'));
+const Experiments = lazy(() => import('@/pages/Experiments'));
+const ExperimentDetail = lazy(() => import('@/pages/ExperimentDetail'));
+const MissionDetail = lazy(() => import('@/pages/MissionDetail'));
+const Evaluation = lazy(() => import('@/pages/Evaluation'));
+const Compare = lazy(() => import('@/pages/Compare'));
+const Assets = lazy(() => import('@/pages/Assets'));
 const Explore = lazy(() => import('@/pages/Explore'));
 const ObjectDetail = lazy(() => import('@/pages/ObjectDetail'));
 const Catalog = lazy(() => import('@/pages/Catalog'));
 const Learn = lazy(() => import('@/pages/Learn'));
-const LessonDetail = lazy(() => import('@/pages/LessonDetail'));
 const RocketLab = lazy(() => import('@/pages/RocketLab'));
 const Builder = lazy(() => import('@/pages/Builder'));
 const Launch = lazy(() => import('@/pages/Launch'));
@@ -46,6 +52,12 @@ const Help = lazy(() => import('@/pages/Help'));
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/Signup'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
+
+/** `/lessons/:slug` was the old path for what is now `/learn/:slug`. */
+function LessonRedirect() {
+  const { slug } = useParams();
+  return <Navigate to={`/learn/${slug ?? ''}`} replace />;
+}
 
 export function App() {
   useSessionRestore();
@@ -69,12 +81,18 @@ export function App() {
             <Route path="/explore/:objectId" element={<ObjectDetail />} />
             <Route path="/catalog" element={<Catalog />} />
             <Route path="/learn" element={<Learn />} />
-            <Route path="/learn/:identifier" element={<LessonDetail />} />
+            <Route path="/learn/:slug" element={<ScienceTopic />} />
+            <Route path="/experiments" element={<Experiments />} />
+            <Route path="/experiments/:experimentId" element={<ExperimentDetail />} />
             <Route path="/rocket-lab" element={<RocketLab />} />
             <Route path="/builder" element={<Builder />} />
             <Route path="/launch" element={<Launch />} />
             <Route path="/mission-control" element={<MissionControl />} />
             <Route path="/missions" element={<Missions />} />
+            <Route path="/missions/:missionId" element={<MissionDetail />} />
+            <Route path="/evaluation" element={<Evaluation />} />
+            <Route path="/compare" element={<Compare />} />
+            <Route path="/assets" element={<Assets />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/assistant" element={<Assistant />} />
 
@@ -88,10 +106,15 @@ export function App() {
               }
             />
 
-            {/* The sidebar's old paths, kept working rather than 404ing. */}
+            {/* Paths from earlier navigation structures, kept working rather
+                than 404ing. `/catalog` and `/explore` were two names for one
+                data set; `/lessons` is now `/learn`. */}
             <Route path="/simulator" element={<Navigate to="/mission-control" replace />} />
             <Route path="/projects" element={<Navigate to="/workspace" replace />} />
             <Route path="/settings" element={<Navigate to="/workspace" replace />} />
+            <Route path="/lessons" element={<Navigate to="/learn" replace />} />
+            <Route path="/lessons/:slug" element={<LessonRedirect />} />
+            <Route path="/report" element={<Navigate to="/evaluation" replace />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

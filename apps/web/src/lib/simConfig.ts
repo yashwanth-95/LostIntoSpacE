@@ -166,6 +166,37 @@ export function toSimVehicle(vehicle: Vehicle): SimVehicle {
   };
 }
 
+/**
+ * Launch-day conditions, exactly as `/environment/weather/{site}` returns them.
+ *
+ * Declared here rather than imported from the API client so this module keeps
+ * its single job — translating between the builder's dialect and the engine's —
+ * without depending on the transport layer.
+ */
+export interface SimEnvironmentInput {
+  temperature_K: number;
+  pressure_Pa: number;
+  wind_speed_ms: number;
+  wind_direction_deg: number;
+  relative_humidity: number;
+  jet_wind_speed_ms: number;
+  source: string;
+  observed_at: string;
+}
+
+/** US Standard Atmosphere at sea level, in still air. The default when no
+ *  observation was taken — and labelled as such, never presented as measured. */
+export const STANDARD_DAY: SimEnvironmentInput = {
+  temperature_K: 288.15,
+  pressure_Pa: 101_325,
+  wind_speed_ms: 0,
+  wind_direction_deg: 0,
+  relative_humidity: 0,
+  jet_wind_speed_ms: 0,
+  source: 'standard_day',
+  observed_at: '',
+};
+
 export interface BuildConfigOptions {
   vehicle: Vehicle;
   missionName: string;
@@ -175,7 +206,13 @@ export interface BuildConfigOptions {
   launchSite: LaunchSite;
   guidanceMode: SimGuidance['mode'];
   launchAzimuthDeg?: number;
-  windSpeedMs?: number;
+  /**
+   * Measured conditions at the pad. Passed through to the engine untouched:
+   * surface temperature and pressure shift the whole atmosphere profile,
+   * humidity changes density, and the wind fields drive the altitude wind
+   * profile that produces angle of attack and lateral deviation.
+   */
+  environment?: SimEnvironmentInput;
   injections?: { mode_id: string; t: number; is_terminal?: boolean }[];
 }
 
@@ -207,12 +244,10 @@ export function buildSimConfig(options: BuildConfigOptions): SimConfig {
         longitude_deg: options.launchSite.longitude_deg,
         altitude_m: options.launchSite.altitude_m,
       },
-      environment: {
-        temperature_K: 288.15,
-        pressure_Pa: 101325,
-        wind_speed_ms: options.windSpeedMs ?? 0,
-        wind_direction_deg: 0,
-      },
+      // Not retyped, not rounded, not defaulted: whatever the weather service
+      // measured is what the vehicle flies through. This is the join that turns
+      // a weather panel into physics.
+      environment: options.environment ?? STANDARD_DAY,
     },
     settings: {
       ...DEFAULT_SETTINGS,

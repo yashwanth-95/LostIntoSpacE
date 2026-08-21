@@ -315,6 +315,17 @@ async def seed_project_mission_vehicle(session: AsyncSession) -> None:
         await session.flush()
 
 
+async def _existing_lessons(session: AsyncSession) -> list[Lesson]:
+    """The lessons `seed_all.py` loaded, for progress records to point at.
+
+    Returns an empty list when the catalog has not been seeded, which makes the
+    demo progress rows simply absent rather than making this script fail — the
+    two seeders are independent and either order should work.
+    """
+    result = await session.execute(select(Lesson).order_by(Lesson.sort_order).limit(3))
+    return list(result.scalars().all())
+
+
 async def seed_learning_progress(session: AsyncSession, lessons: list[Lesson]) -> None:
     """One completed lesson and one in progress, so the dashboard isn't empty."""
     if not lessons:
@@ -402,13 +413,18 @@ async def run_demo_seed() -> dict[str, int]:
     try:
         async with session_factory() as session:
             await seed_demo_user(session)
-            counts["space_objects"] = await seed_space_objects(session)
-            lessons = await seed_lessons(session)
+            # Space objects and lessons come from `data/catalog/` via
+            # `seed_all.py`, which loads 38 objects with published bulk
+            # parameters and 27 science topics. The rounded teaching figures
+            # this module used to insert alongside them produced a second,
+            # worse Mars in the same table.
+            lessons = await _existing_lessons(session)
             counts["lessons"] = len(lessons)
             await seed_project_mission_vehicle(session)
             await seed_learning_progress(session, lessons)
             await seed_conversation(session)
             await session.commit()
+            counts["space_objects"] = "from catalog (run seed_all.py)"
             counts["users"] = 1
             counts["projects"] = 1
             counts["missions"] = 1

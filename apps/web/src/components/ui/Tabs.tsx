@@ -14,8 +14,34 @@ function useTabs() {
   return ctx;
 }
 
-export function Tabs({ defaultValue, children, className }: { defaultValue: string; children: ReactNode; className?: string }) {
-  const [active, setActive] = useState(defaultValue);
+/**
+ * Tabs, as a channel selector.
+ *
+ * A hairline underline marks the active channel rather than a filled pill, so a
+ * tab strip sits on the same visual plane as the rules that structure the rest
+ * of the screen.
+ */
+export function Tabs({
+  defaultValue,
+  value,
+  onValueChange,
+  children,
+  className,
+}: {
+  defaultValue: string;
+  /** Controlled mode: drive the active tab from outside. */
+  value?: string;
+  onValueChange?: (id: string) => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  const [internal, setInternal] = useState(defaultValue);
+  const active = value ?? internal;
+  const setActive = (id: string) => {
+    setInternal(id);
+    onValueChange?.(id);
+  };
+
   return (
     <TabsContext.Provider value={{ active, setActive }}>
       <div className={className}>{children}</div>
@@ -25,13 +51,27 @@ export function Tabs({ defaultValue, children, className }: { defaultValue: stri
 
 export function TabsList({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn('flex gap-1 border-b border-space-800 pb-px', className)} role="tablist">
+    <div
+      className={cn('flex gap-5 hairline-b overflow-x-auto no-scrollbar', className)}
+      role="tablist"
+    >
       {children}
     </div>
   );
 }
 
-export function TabsTrigger({ value, children, className }: { value: string; children: ReactNode; className?: string }) {
+export function TabsTrigger({
+  value,
+  children,
+  count,
+  className,
+}: {
+  value: string;
+  children: ReactNode;
+  /** An optional item count, rendered as a monospaced superscript. */
+  count?: number;
+  className?: string;
+}) {
   const { active, setActive } = useTabs();
   const isActive = active === value;
   return (
@@ -40,20 +80,37 @@ export function TabsTrigger({ value, children, className }: { value: string; chi
       aria-selected={isActive}
       onClick={() => setActive(value)}
       className={cn(
-        'px-3 py-2 text-xs font-medium transition-colors rounded-t-md',
+        'relative -mb-px shrink-0 whitespace-nowrap pb-2 pt-1',
+        'font-condensed text-micro uppercase tracking-instrument',
+        'transition-colors duration-quick ease-instrument focus-ring',
         isActive
-          ? 'text-accent-cyan border-b-2 border-accent-cyan bg-accent-cyan/5'
-          : 'text-space-400 hover:text-space-200',
+          ? 'text-ink-50 border-b border-signal-flame'
+          : 'text-ink-500 border-b border-transparent hover:text-ink-200',
         className,
       )}
     >
       {children}
+      {count !== undefined && (
+        <span className="ml-1.5 font-mono text-[0.55rem] text-ink-600">{count}</span>
+      )}
     </button>
   );
 }
 
-export function TabsContent({ value, children, className }: { value: string; children: ReactNode; className?: string }) {
+export function TabsContent({
+  value,
+  children,
+  className,
+}: {
+  value: string;
+  children: ReactNode;
+  className?: string;
+}) {
   const { active } = useTabs();
   if (active !== value) return null;
-  return <div role="tabpanel" className={cn('pt-4 animate-fade-in', className)}>{children}</div>;
+  return (
+    <div role="tabpanel" className={cn('pt-4 animate-acquire', className)}>
+      {children}
+    </div>
+  );
 }

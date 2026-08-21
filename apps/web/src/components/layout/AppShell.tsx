@@ -23,9 +23,9 @@ export function AppShell() {
   }, [searchOpen, setSearchOpen]);
 
   return (
-    <div className="min-h-screen bg-space-950">
+    <div className="min-h-screen bg-[color:var(--plane-0)]">
       <Sidebar />
-      <div className={cn('flex flex-col min-h-screen transition-all duration-200', collapsed ? 'ml-16' : 'ml-56')}>
+      <div className={cn('flex min-h-screen flex-col transition-[margin] duration-settle ease-instrument', collapsed ? 'ml-14' : 'ml-60')}>
         <TopBar />
         <main className="flex-1 overflow-y-auto">
           <Outlet />

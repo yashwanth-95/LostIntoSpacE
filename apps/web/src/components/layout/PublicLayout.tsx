@@ -15,23 +15,30 @@ export function PublicLayout() {
   const isGuest = useAuthStore((s) => s.isGuest);
 
   return (
-    <div className="min-h-screen bg-space-950 flex flex-col">
-      <header className="sticky top-0 z-40 h-14 border-b border-space-800/60 bg-space-950/80 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl h-full px-6 flex items-center justify-between">
+    <div className="flex min-h-screen flex-col bg-[color:var(--plane-0)]">
+      <header className="sticky top-0 z-chrome h-14 bg-[color:var(--plane-0)]/85 backdrop-blur-sm hairline-b">
+        <div className="mx-auto flex h-full max-w-[1600px] items-center justify-between px-6 md:px-12">
           <Link to="/" className="flex items-center gap-2.5 focus-ring rounded-md">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent-cyan to-accent-blue flex items-center justify-center">
-              <span className="text-xs font-bold text-white">L</span>
-            </div>
-            <span className="font-display font-semibold text-sm text-space-100">
-              LostIntoSpace
-            </span>
+            <svg
+              viewBox="0 0 16 16"
+              className="h-5 w-5 shrink-0 text-signal-flame"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.25}
+              aria-hidden="true"
+            >
+              <circle cx="8" cy="8" r="3.2" />
+              <ellipse cx="8" cy="8" rx="7" ry="2.6" transform="rotate(-24 8 8)" />
+            </svg>
+            <span className="font-display text-lg leading-none text-ink-50">LostIntoSpace</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-1" aria-label="Primary">
             {[
               { to: '/explore', label: 'Explore' },
-              { to: '/learn', label: 'Learn' },
-              { to: '/rocket-lab', label: 'Rocket Lab' },
+              { to: '/learn', label: 'Understand' },
+              { to: '/rocket-lab', label: 'Build' },
+              { to: '/launch', label: 'Simulate' },
               { to: '/missions', label: 'Missions' },
               { to: '/help', label: 'Help' },
             ].map((item) => (
@@ -40,10 +47,10 @@ export function PublicLayout() {
                 to={item.to}
                 className={({ isActive }) =>
                   cn(
-                    'px-3 py-1.5 rounded-md text-sm transition-colors focus-ring',
+                    'relative px-3 py-1.5 text-sm transition-colors duration-quick focus-ring',
                     isActive
-                      ? 'text-accent-cyan bg-accent-cyan/10'
-                      : 'text-space-400 hover:text-space-100 hover:bg-space-800/60',
+                      ? 'text-ink-50 after:absolute after:inset-x-3 after:-bottom-[1px] after:h-px after:bg-signal-flame'
+                      : 'text-ink-400 hover:text-ink-100',
                   )
                 }
               >
@@ -56,7 +63,7 @@ export function PublicLayout() {
             {isAuthenticated ? (
               <Link
                 to="/workspace"
-                className="h-8 px-3 inline-flex items-center rounded-md text-xs bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/20 transition-colors focus-ring"
+                className="inline-flex h-8 items-center rounded-instrument border border-signal-flame/40 bg-signal-flame/12 px-3 text-xs text-signal-flame-bright transition-colors duration-quick hover:bg-signal-flame/20 focus-ring"
               >
                 Workspace
               </Link>
@@ -64,13 +71,13 @@ export function PublicLayout() {
               <>
                 <Link
                   to="/login"
-                  className="h-8 px-3 inline-flex items-center rounded-md text-xs text-space-300 hover:text-space-100 transition-colors focus-ring"
+                  className="inline-flex h-8 items-center px-3 text-xs text-ink-400 transition-colors duration-quick hover:text-ink-50 focus-ring"
                 >
                   Sign in
                 </Link>
                 <Link
                   to="/signup"
-                  className="h-8 px-3 inline-flex items-center rounded-md text-xs bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/20 transition-colors focus-ring"
+                  className="inline-flex h-8 items-center rounded-instrument border border-signal-flame/40 bg-signal-flame/12 px-3 text-xs text-signal-flame-bright transition-colors duration-quick hover:bg-signal-flame/20 focus-ring"
                 >
                   {isGuest ? 'Create account' : 'Sign up'}
                 </Link>
@@ -84,22 +91,22 @@ export function PublicLayout() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-space-800/60 py-8 mt-16">
-        <div className="mx-auto max-w-7xl px-6 flex flex-col md:flex-row gap-4 justify-between text-xs text-space-500">
+      <footer className="mt-16 py-8 hairline-t">
+        <div className="mx-auto flex max-w-[1600px] flex-col justify-between gap-4 px-6 text-xs text-ink-500 md:flex-row md:px-12">
           <p>
             LostIntoSpace — Learn. Build. Simulate. Explore.{' '}
-            <span className="text-space-600">
+            <span className="text-ink-600">
               Educational simulation; not flight-certified engineering.
             </span>
           </p>
           <nav className="flex gap-4" aria-label="Footer">
-            <Link to="/help/guide" className="hover:text-space-300 focus-ring rounded">
+            <Link to="/help/guide" className="transition-colors hover:text-ink-200 focus-ring">
               Guide
             </Link>
-            <Link to="/help/faq" className="hover:text-space-300 focus-ring rounded">
+            <Link to="/help/faq" className="transition-colors hover:text-ink-200 focus-ring">
               FAQ
             </Link>
-            <Link to="/help/contact" className="hover:text-space-300 focus-ring rounded">
+            <Link to="/help/contact" className="transition-colors hover:text-ink-200 focus-ring">
               Contact
             </Link>
           </nav>
