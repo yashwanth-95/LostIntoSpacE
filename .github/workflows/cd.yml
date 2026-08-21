@@ -47,6 +47,13 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
+      # The web tsconfig compiles the simulation engine's sources directly, so
+      # the engine's own dev dependencies must be installed first or every hook
+      # in its adapters typechecks as `any`. Same reason as in ci.yml.
+      - name: Install the simulation engine's dev dependencies
+        working-directory: packages/simulation-engine
+        run: npm ci
+
       - name: Build the web application
         working-directory: apps/web
         run: |

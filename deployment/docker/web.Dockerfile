@@ -4,7 +4,11 @@ FROM node:20-slim AS build
 WORKDIR /build
 
 COPY apps/web/package.json apps/web/package-lock.json apps/web/
-COPY packages/simulation-engine/package.json packages/simulation-engine/
+COPY packages/simulation-engine/package.json packages/simulation-engine/package-lock.json packages/simulation-engine/
+# The engine's dev dependencies too: apps/web compiles its sources directly
+# rather than a built artefact, so @types/react and @types/three have to be
+# present for the typecheck to see anything but `any`.
+RUN cd packages/simulation-engine && npm ci
 RUN cd apps/web && npm ci
 
 COPY packages/ packages/
