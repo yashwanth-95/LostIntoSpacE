@@ -404,7 +404,7 @@ def _catalog() -> List[CatalogObject]:
                 "Its rapid rotation flattens it visibly: the equatorial radius exceeds the polar radius by about 4,600 km.",
                 "The magnetosphere is the largest structure in the solar system after the heliosphere itself.",
             ],
-            mission_ids=["juno", "voyager-1", "voyager-2"],
+            mission_ids=["juno", "voyager-2"],
             related_ids=["io", "europa", "ganymede", "callisto"],
             concept_slugs=["gravity-assist", "gravity"],
             appearance=Appearance(
@@ -833,7 +833,7 @@ def _moons() -> List[CatalogObject]:
                 "Volcanic plumes reach 500 km above the surface — far higher than Io's own radius would suggest is possible.",
                 "It sits inside Jupiter's radiation belts, where a human would receive a lethal dose within minutes.",
             ],
-            mission_ids=["juno", "voyager-1"],
+            mission_ids=["juno", "voyager-2"],
             related_ids=["jupiter", "europa", "ganymede"],
             appearance=Appearance(
                 base_color="#D9C066",
@@ -1506,7 +1506,7 @@ def _spacecraft() -> List[CatalogObject]:
                 "In 1990 it turned around and photographed Earth from 6 billion km — the Pale Blue Dot.",
                 "In 2023 a failing computer garbled its telemetry for months; engineers patched it from 24 billion km away.",
             ],
-            mission_ids=["voyager-1"],
+            mission_ids=["voyager-2"],
             related_ids=["voyager-2", "jupiter", "saturn"],
             concept_slugs=["scale-of-the-universe", "gravity-assist"],
             appearance=Appearance(

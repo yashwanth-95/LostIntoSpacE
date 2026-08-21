@@ -1,115 +1,151 @@
-"""Live launch-site conditions.
+"""Weather for a launch site, in the form the simulation consumes.
 
-Wraps the weather providers in ``data/environment`` and adds the piece the
-simulation actually consumes: an ``EnvironmentConfig`` built from the
-observation, so a user can fetch real weather for Kennedy and fly through it
-without any value being retyped in between.
+Two responsibilities, and it is worth keeping them separate in your head:
 
-That translation is the whole point of this module. A weather panel that shows
-18 m/s of wind next to a simulation that flies in still air is a decoration,
-and this product was told not to build one.
+1. Fetch and normalise an observation (delegated to `data.environment`).
+2. Reduce that observation to the handful of SI fields the physics reads, so
+   that what the user sees on the launch page and what the trajectory is flown
+   against are the same numbers.
+
+The second is the one that matters. The brief was explicit that weather must not
+be a decorative card, and the way to guarantee that is to make the panel and the
+simulation read from a single derived object rather than from two paths that
+could drift.
 """
 
 from __future__ import annotations
 
-import logging
+import math
 from functools import lru_cache
-from typing import Any
+from typing import Any, Dict, List
 
-from src.catalog.service import launch_site
-from src.core.engines import EngineUnavailableError, get_environment
-from src.core.exceptions import AppError
-
-logger = logging.getLogger("api.environment")
-
-__all__ = ["observation_for_site", "environment_config_for_site", "weather_service"]
-
-
-def _unavailable(exc: Exception) -> AppError:
-    return AppError(503, "ENVIRONMENT_UNAVAILABLE", "Launch-site weather is not available")
+from src.catalog import service as catalog_service
+from src.core.engines import ensure_engine_paths
 
 
 @lru_cache(maxsize=1)
-def _environment() -> Any:
-    try:
-        return get_environment()
-    except EngineUnavailableError as exc:
-        raise _unavailable(exc) from exc
+def _weather_service() -> Any:
+    """One service per process, so its cache is actually shared."""
+    ensure_engine_paths()
+    from data.environment import WeatherService
+
+    return WeatherService()
 
 
-@lru_cache(maxsize=1)
-def weather_service() -> Any:
-    """One service per process, so its cache and its HTTP client are shared."""
-    return _environment().WeatherService()
+def _assess(observation: Any) -> Any:
+    ensure_engine_paths()
+    from data.environment import assess_launch_conditions
+
+    return assess_launch_conditions(observation)
 
 
-async def observation_for_site(site_id: str, *, force_refresh: bool = False) -> dict[str, Any]:
+def _standard_density_at(elevation_m: float) -> float:
+    """Standard-atmosphere density at a site's elevation. Unit: kg/m³.
+
+    The comparison baseline for "is today's air thicker or thinner than usual",
+    which is only meaningful against the site's own elevation — Baikonur at 90 m
+    is always slightly thinner than sea level, and that is not weather.
     """
-    Current conditions at a launch site, with the go/no-go assessment.
-
-    Never raises for a provider outage: the service falls back to a clearly
-    labelled standard day, and `is_live` says which happened. A simulator that
-    cannot run because a weather API is down would be a worse product than one
-    that runs on a stated standard day.
-    """
-    site = launch_site(site_id)
-    environment = _environment()
-    service = weather_service()
-
-    observation = await service.observation(
-        site_id=site["id"],
-        latitude_deg=site["latitude_deg"],
-        longitude_deg=site["longitude_deg"],
-        elevation_m=site["elevation_m"],
-        force_refresh=force_refresh,
-    )
-    suitability = environment.assess_launch_conditions(observation)
-
-    return {
-        "site": {
-            "id": site["id"],
-            "name": site["name"],
-            "short_name": site["short_name"],
-            "country": site["country"],
-            "operator": site["operator"],
-            "latitude_deg": site["latitude_deg"],
-            "longitude_deg": site["longitude_deg"],
-            "elevation_m": site["elevation_m"],
-        },
-        "observation": observation.model_dump(mode="json"),
-        "suitability": suitability.model_dump(mode="json"),
-        "simulation_environment": _to_environment_config(observation),
-    }
+    temperature = 288.15 - 0.0065 * elevation_m
+    pressure = 101_325.0 * (temperature / 288.15) ** 5.25588
+    return pressure / (287.058 * temperature)
 
 
-def _to_environment_config(observation: Any) -> dict[str, Any]:
-    """
-    The observation, in the shape the simulation's ``EnvironmentConfig`` takes.
+def _simulation_environment(observation: Any) -> Dict[str, Any]:
+    """The observation, reduced to what `EnvironmentConfig` accepts.
 
-    This is the one place the two vocabularies meet. Weather providers speak
-    Celsius and hPa; the physics speaks kelvin and pascals, and the conversion
-    already happened at the provider boundary — so all that remains is renaming
-    fields and being explicit about which ones the engine reads.
+    Exactly these fields are sent to the simulation. Nothing on the launch page
+    is shown that is not either in here or explicitly labelled as context.
     """
     return {
         "temperature_K": round(observation.temperature_K, 3),
         "pressure_Pa": round(observation.pressure_Pa, 1),
-        "wind_speed_ms": round(observation.wind.speed_ms, 2),
+        "wind_speed_ms": round(observation.wind.speed_ms, 3),
         "wind_direction_deg": round(observation.wind.direction_deg, 1),
-        "relative_humidity": round(observation.relative_humidity, 3),
-        # None means "estimate it from the surface wind"; a measured 250 hPa
-        # value is far better than the estimate when the provider has one.
-        "jet_wind_speed_ms": (
-            round(observation.jet_wind_speed_ms, 2)
-            if observation.jet_wind_speed_ms is not None
-            else 0.0
-        ),
+        "relative_humidity": round(observation.relative_humidity, 4),
+        # 0 tells the wind model to estimate the jet from the surface wind.
+        "jet_wind_speed_ms": round(observation.jet_wind_speed_ms or 0.0, 2),
         "source": observation.provider,
         "observed_at": observation.observed_at.isoformat(),
     }
 
 
-async def environment_config_for_site(site_id: str) -> dict[str, Any]:
-    """Just the simulation input, for a client that only wants to fly."""
-    payload = await observation_for_site(site_id)
-    return payload["simulation_environment"]
+async def site_weather(site_id: str, *, refresh: bool = False) -> Dict[str, Any]:
+    """Conditions at one launch site, with the verdict and the simulation inputs."""
+    site = catalog_service.get_launch_site(site_id)
+    service = _weather_service()
+
+    observation = await service.observation(
+        site_id=site.id,
+        latitude_deg=site.latitude_deg,
+        longitude_deg=site.longitude_deg,
+        elevation_m=site.elevation_m,
+        force_refresh=refresh,
+    )
+
+    standard_density = _standard_density_at(site.elevation_m)
+    delta_pct = (
+        (observation.air_density_kgm3 - standard_density) / standard_density * 100.0
+        if standard_density > 0
+        else 0.0
+    )
+
+    payload = observation.model_dump(mode="json")
+    payload["temperature_C"] = round(observation.temperature_K - 273.15, 2)
+
+    return {
+        "site": site,
+        "observation": payload,
+        "suitability": _assess(observation),
+        "simulation_environment": _simulation_environment(observation),
+        "density_vs_standard_pct": round(delta_pct, 2),
+    }
+
+
+async def all_site_weather() -> List[Dict[str, Any]]:
+    """Conditions at every site, for the launch-site picker.
+
+    Sequential rather than concurrent on purpose: ten parallel requests to a
+    free weather API is how an installation gets rate-limited, and the
+    ten-minute cache means this is a cold path at most once per interval.
+    """
+    results = []
+    for site in catalog_service.list_launch_sites():
+        try:
+            results.append(await site_weather(site.id))
+        except Exception:  # noqa: BLE001 - one bad site must not blank the picker
+            continue
+    return results
+
+
+def provider_name() -> str:
+    return _weather_service().provider_name
+
+
+def wind_profile_preview(surface_speed_ms: float, direction_deg: float, latitude_deg: float) -> List[Dict[str, float]]:
+    """The wind profile a given surface observation implies, sampled by altitude.
+
+    Exposed so the launch page and the wind-shear lesson can show *why* a calm
+    morning at the pad is not the same as calm conditions at max-Q. Uses the
+    same model the force calculation uses, not a second approximation of it.
+    """
+    ensure_engine_paths()
+    from simulation.models.wind import WindProfile, wind_at_altitude
+
+    profile = WindProfile(
+        surface_speed_ms=surface_speed_ms,
+        surface_direction_deg=direction_deg,
+        latitude_deg=latitude_deg,
+    )
+
+    samples = []
+    for altitude_m in (0, 10, 100, 500, 1_000, 2_000, 5_000, 8_000, 11_000, 14_000, 18_000, 22_000, 25_000):
+        state = wind_at_altitude(float(altitude_m), profile)
+        samples.append(
+            {
+                "altitude_m": float(altitude_m),
+                "speed_ms": round(state.speed_ms, 2),
+                "direction_deg": round(state.direction_deg, 1),
+            }
+        )
+    return samples

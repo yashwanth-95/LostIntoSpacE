@@ -161,6 +161,8 @@ export interface SourceReference {
   source_type: string;
   source_url?: string | null;
   retrieved_at?: string | null;
+  /** Whom to credit. Rendered wherever a sourced number or image appears. */
+  attribution?: string | null;
 }
 
 export interface AIResponse {
@@ -189,8 +191,98 @@ export interface FailureAnalysis {
   confidence?: string;
 }
 
+/**
+ * What the assistant is told about the user's current situation.
+ *
+ * Sent with every question. Without it the assistant can only answer the
+ * general form of a question — "why is my rocket unstable" gets a textbook
+ * paragraph about centres of pressure rather than the actual static margin of
+ * the actual vehicle. Every field is optional because the user may be anywhere.
+ */
+export interface AssistantContext {
+  page?: string;
+  object_id?: string;
+  topic_slug?: string;
+  experiment_id?: string;
+  mission_id?: string;
+  rocket?: {
+    name: string;
+    stage_count: number;
+    component_count: number;
+    total_wet_mass_kg: number;
+    total_dry_mass_kg: number;
+    payload_mass_kg: number;
+    total_delta_v_ms: number;
+    liftoff_twr: number;
+    stability_margin_wet_cal: number;
+    stability_margin_dry_cal: number;
+    cg_wet_m: number;
+    cp_m: number;
+    length_m: number;
+    diameter_m: number;
+    validation_errors: string[];
+    validation_warnings: string[];
+  };
+  mission?: {
+    name: string;
+    objective: string;
+    target_altitude_km: number;
+    mission_type: string;
+    launch_site: string;
+    guidance_mode: string;
+  };
+  weather?: {
+    site: string;
+    temperature_C: number;
+    pressure_hPa: number;
+    wind_speed_ms: number;
+    wind_direction_deg: number;
+    air_density_kgm3: number;
+    is_live: boolean;
+    suitability: string;
+  };
+  simulation?: {
+    outcome: string;
+    success: boolean;
+    termination_reason: string;
+    final_state: string;
+    max_altitude_m: number;
+    max_speed_ms: number;
+    max_acceleration_g: number;
+    max_dynamic_pressure_Pa: number;
+    max_q_alpha_Padeg: number;
+    max_lateral_deviation_m: number;
+    flight_time_s: number;
+    delta_v_ideal_ms: number;
+    delta_v_achieved_ms: number;
+    gravity_loss_ms: number;
+    drag_loss_ms: number;
+    failures: {
+      mode_id: string;
+      failure_mode: string;
+      subsystem: string;
+      severity: string;
+      t: number;
+      measured_value: number;
+      threshold_value: number;
+      unit: string;
+      recommended_fix: string;
+    }[];
+  };
+  evaluation?: {
+    overall_score: number;
+    categories: { id: string; label: string; score: number }[];
+    weaknesses: string[];
+  };
+}
+
 export const ai = {
-  ask: (question: string) => api.post<AIResponse>('/ai/ask', { question }),
+  /**
+   * Ask a question, with everything the assistant needs to answer it about
+   * *your* rocket rather than about rockets in general.
+   */
+  ask: (question: string, context?: AssistantContext) =>
+    api.post<AIResponse>('/ai/ask', { question, context }),
   explainFailure: (body: {
     simulation_result: SimResult;
     vehicle_description?: string;
@@ -502,20 +594,17 @@ export interface SimulationEnvironment {
 }
 
 export interface SiteWeather {
-  site: {
-    id: string;
-    name: string;
-    short_name: string;
-    country: string;
-    operator: string;
-    latitude_deg: number;
-    longitude_deg: number;
-    elevation_m: number;
-  };
+  site: LaunchSiteRecord;
   observation: WeatherObservation;
   suitability: LaunchSuitability;
   /** Feed this straight into a simulation — no values are retyped in between. */
   simulation_environment: SimulationEnvironment;
+  /**
+   * Today's air density against a standard day at this site's elevation, as a
+   * percentage. Denser air means proportionally more drag, so this is the one
+   * number that says whether the weather will actually change the flight.
+   */
+  density_vs_standard_pct: number;
 }
 
 export const environment = {

@@ -1,296 +1,376 @@
-"""Catalog access.
+"""Reading the platform catalog.
 
-The catalog is authored in Python (``data/catalog/``) and loaded into
-PostgreSQL by the seed loaders. This service reads the authored modules
-directly, which has two consequences worth stating.
+The catalog is content, not user data: space objects, launch sites, science
+topics, experiments, reference missions and assets. It is identical for every
+user and it changes when someone edits a content module, not when a request
+comes in.
 
-**It works with no database.** A fresh checkout serves a fully populated
-explorer, learning library and component picker before anyone has run a
-migration. An empty section because the fixture data is not finished yet is
-exactly the failure mode this product was told not to ship.
+That shape makes it worth caching in-process. `functools.lru_cache` builds each
+collection once per worker and every subsequent request is a dictionary lookup,
+which keeps the object field responsive without a database round trip.
 
-**It is read-only.** Nothing here writes. The records are immutable reference
-content; anything a *user* creates — projects, vehicles, simulation runs — lives
-in PostgreSQL behind the existing ownership rules and is not served from here.
-
-Everything is built once per process and cached. The catalog is a few hundred
-kilobytes of frozen pydantic models, and rebuilding it per request would be
-pure waste.
+The database is the persistent store for *user* data — projects, vehicles,
+simulation runs. The seed loaders in `database/seeds/` copy this catalog into
+Postgres so the two agree, but the API reads it from here so that a missing or
+unseeded database degrades the product to "no saved projects" rather than to
+"no content at all".
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, Iterable, Sequence
+from typing import Any, Dict, List, Optional
 
-from src.core.engines import EngineUnavailableError, get_catalog
-from src.core.exceptions import AppError, NotFoundError
-
-__all__ = [
-    "space_objects",
-    "space_object",
-    "object_field",
-    "launch_sites",
-    "launch_site",
-    "science_topics",
-    "science_topic",
-    "experiments",
-    "experiment",
-    "reference_missions",
-    "reference_mission",
-    "assets",
-    "asset",
-    "catalog_summary",
-]
+from src.core.engines import EngineUnavailableError, ensure_engine_paths
+from src.core.exceptions import NotFoundError
 
 
-def _unavailable(exc: Exception) -> AppError:
-    return AppError(503, "CATALOG_UNAVAILABLE", "The reference catalog is not available")
+def _catalog_module(name: str):
+    """Import one catalog content module, with engine paths set up."""
+    ensure_engine_paths()
+    import importlib
+
+    return importlib.import_module("data.catalog.{0}".format(name))
 
 
 @lru_cache(maxsize=1)
-def _catalog() -> Any:
-    try:
-        return get_catalog()
-    except EngineUnavailableError as exc:
-        raise _unavailable(exc) from exc
+def _objects() -> List[Any]:
+    return _catalog_module("space_objects").build_space_objects()
 
 
 @lru_cache(maxsize=1)
-def _objects() -> Sequence[Any]:
-    return tuple(_catalog().build_space_objects())
+def _objects_by_id() -> Dict[str, Any]:
+    return {obj.id: obj for obj in _objects()}
 
 
 @lru_cache(maxsize=1)
-def _sites() -> Sequence[Any]:
-    return tuple(_catalog().build_launch_sites())
+def _launch_sites() -> List[Any]:
+    return _catalog_module("launch_sites").build_launch_sites()
 
 
 @lru_cache(maxsize=1)
-def _topics() -> Sequence[Any]:
-    return tuple(_catalog().build_science_topics())
+def _launch_sites_by_id() -> Dict[str, Any]:
+    return {site.id: site for site in _launch_sites()}
 
 
 @lru_cache(maxsize=1)
-def _experiments() -> Sequence[Any]:
-    return tuple(_catalog().build_experiments())
+def _topics() -> List[Any]:
+    return _catalog_module("science").build_science_topics()
 
 
 @lru_cache(maxsize=1)
-def _missions() -> Sequence[Any]:
-    return tuple(_catalog().build_reference_missions())
+def _topics_by_slug() -> Dict[str, Any]:
+    return {topic.slug: topic for topic in _topics()}
 
 
 @lru_cache(maxsize=1)
-def _assets() -> Sequence[Any]:
-    return tuple(_catalog().build_assets())
+def _experiments() -> List[Any]:
+    return _catalog_module("experiments").build_experiments()
 
 
-def _matches(text: str, haystacks: Iterable[str]) -> bool:
-    needle = text.lower()
-    return any(needle in (h or "").lower() for h in haystacks)
+@lru_cache(maxsize=1)
+def _experiments_by_id() -> Dict[str, Any]:
+    return {experiment.id: experiment for experiment in _experiments()}
+
+
+@lru_cache(maxsize=1)
+def _missions() -> List[Any]:
+    return _catalog_module("reference_missions").build_reference_missions()
+
+
+@lru_cache(maxsize=1)
+def _missions_by_id() -> Dict[str, Any]:
+    return {mission.id: mission for mission in _missions()}
+
+
+@lru_cache(maxsize=1)
+def _assets() -> List[Any]:
+    return _catalog_module("assets").build_assets()
+
+
+def _matches(haystacks: List[str], needle: str) -> bool:
+    lowered = needle.lower()
+    return any(lowered in (text or "").lower() for text in haystacks)
 
 
 # ── Space objects ─────────────────────────────────────────────
 
 
-def space_objects(
-    *, kind: str | None = None, parent_id: str | None = None, q: str | None = None
-) -> list[dict[str, Any]]:
-    """The object catalog, optionally filtered."""
-    results = _objects()
+def list_objects(
+    *,
+    kind: Optional[str] = None,
+    parent_id: Optional[str] = None,
+    q: Optional[str] = None,
+) -> List[Any]:
+    objects = _objects()
     if kind:
-        results = [o for o in results if o.kind.value == kind]
+        objects = [obj for obj in objects if obj.kind.value == kind]
     if parent_id:
-        results = [o for o in results if o.parent_id == parent_id]
+        objects = [obj for obj in objects if obj.parent_id == parent_id]
     if q:
-        results = [
-            o
-            for o in results
-            if _matches(q, [o.name, o.designation or "", o.classification, o.tagline, o.overview])
+        objects = [
+            obj
+            for obj in objects
+            if _matches([obj.name, obj.designation or "", obj.classification, obj.tagline], q)
         ]
-    return [o.model_dump(mode="json") for o in results]
+    return objects
 
 
-def space_object(object_id: str) -> dict[str, Any]:
-    for obj in _objects():
-        if obj.id == object_id:
-            return obj.model_dump(mode="json")
-    raise NotFoundError("No such space object")
+def get_object(object_id: str) -> Any:
+    obj = _objects_by_id().get(object_id)
+    if obj is None:
+        raise NotFoundError("No catalog object with id '{0}'".format(object_id))
+    return obj
 
 
-def object_field() -> dict[str, Any]:
-    """The landing page's object field.
+def field_objects() -> Dict[str, Any]:
+    """The objects placed in the landing-page field, reduced for first paint.
 
-    A trimmed projection: only what is needed to draw and label a body, so the
-    landing page does not download every property table it will not show. The
-    full record is one request away on hover-to-inspect.
+    Only those carrying explicit layout coordinates. An object without them
+    would have to be positioned by an algorithm, and a solar system arranged by
+    an algorithm looks like a scatter plot rather than like a curated map.
+
+    Each entry carries what is needed to *draw* the body and label it — the
+    appearance record, the tagline, and two headline properties — but not the
+    full property tables. Those are fetched per object when one is approached,
+    which keeps the landing payload to a few kilobytes.
     """
-    field = []
-    for obj in _objects():
-        if obj.field_x is None or obj.field_y is None:
-            # Objects without a placement are catalogue-only; the field is a
-            # curated composition, not everything that exists.
-            continue
-        headline = obj.physical[:2] + obj.orbital[:2]
-        field.append(
+    placed = [obj for obj in _objects() if obj.field_x is not None and obj.field_y is not None]
+    return {
+        "objects": [
             {
                 "id": obj.id,
                 "name": obj.name,
                 "kind": obj.kind.value,
                 "classification": obj.classification,
                 "tagline": obj.tagline,
-                "appearance": obj.appearance.model_dump(mode="json"),
+                "appearance": obj.appearance,
                 "x": obj.field_x,
                 "y": obj.field_y,
                 "depth": obj.field_depth,
-                "headline": [p.model_dump(mode="json") for p in headline],
-                "image": obj.image.model_dump(mode="json") if obj.image else None,
+                # Two numbers, chosen for recognisability rather than
+                # completeness: the ones worth reading at a glance.
+                "headline": _headline_properties(obj),
+                "image": obj.image,
             }
-        )
-    return {"objects": field, "total_catalog": len(_objects())}
+            for obj in placed
+        ],
+        "total_catalog": len(_objects()),
+    }
+
+
+#: Properties worth showing on hover, in order of preference.
+_HEADLINE_LABELS = (
+    "Mean radius",
+    "Surface gravity",
+    "Orbital period",
+    "Mean distance from Sun",
+    "Mass",
+    "Orbital velocity",
+    "Mean altitude",
+)
+
+
+def _headline_properties(obj: Any, limit: int = 2) -> List[Any]:
+    """The two properties most worth reading on hover.
+
+    Preferring a fixed order rather than "the first two" keeps the field
+    consistent — every body shows its size and then its motion, so the numbers
+    are comparable across objects instead of being whatever the record happened
+    to list first.
+    """
+    available = list(obj.physical) + list(obj.orbital)
+    by_label = {prop.label: prop for prop in available}
+    chosen = [by_label[label] for label in _HEADLINE_LABELS if label in by_label]
+    if len(chosen) < limit:
+        chosen += [prop for prop in available if prop not in chosen]
+    return chosen[:limit]
 
 
 # ── Launch sites ──────────────────────────────────────────────
 
 
-def launch_sites() -> list[dict[str, Any]]:
-    return [s.model_dump(mode="json") for s in _sites()]
+def list_launch_sites() -> List[Any]:
+    return _launch_sites()
 
 
-def launch_site(site_id: str) -> dict[str, Any]:
-    for site in _sites():
-        if site.id == site_id:
-            return site.model_dump(mode="json")
-    raise NotFoundError("No such launch site")
+def get_launch_site(site_id: str) -> Any:
+    site = _launch_sites_by_id().get(site_id)
+    if site is None:
+        raise NotFoundError("No launch site with id '{0}'".format(site_id))
+    return site
 
 
 # ── Science ───────────────────────────────────────────────────
 
 
-def science_topics(
-    *, strand: str | None = None, level: str | None = None, q: str | None = None
-) -> list[dict[str, Any]]:
-    results = _topics()
+def list_topics(
+    *,
+    strand: Optional[str] = None,
+    level: Optional[str] = None,
+    q: Optional[str] = None,
+) -> List[Any]:
+    topics = _topics()
     if strand:
-        results = [t for t in results if t.strand == strand]
+        topics = [topic for topic in topics if topic.strand.lower() == strand.lower()]
     if level:
-        results = [t for t in results if t.level == level]
+        topics = [topic for topic in topics if topic.level == level]
     if q:
-        results = [
-            t
-            for t in results
-            if _matches(q, [t.title, t.summary, t.strand] + [s.body for s in t.sections])
+        topics = [
+            topic
+            for topic in topics
+            if _matches([topic.title, topic.summary, topic.strand] + list(topic.glossary), q)
         ]
-    return [t.model_dump(mode="json") for t in results]
+    return topics
 
 
-def science_topic(slug: str) -> dict[str, Any]:
-    for topic in _topics():
-        if topic.slug == slug:
-            return topic.model_dump(mode="json")
-    raise NotFoundError("No such science topic")
+def get_topic(slug: str) -> Any:
+    topic = _topics_by_slug().get(slug)
+    if topic is None:
+        raise NotFoundError("No science topic with slug '{0}'".format(slug))
+    return topic
 
 
 # ── Experiments ───────────────────────────────────────────────
 
 
-def experiments(*, category: str | None = None, level: str | None = None) -> list[dict[str, Any]]:
-    results = _experiments()
+def list_experiments(
+    *, category: Optional[str] = None, level: Optional[str] = None
+) -> List[Any]:
+    experiments = _experiments()
     if category:
-        results = [e for e in results if e.category.lower() == category.lower()]
+        experiments = [e for e in experiments if e.category.lower() == category.lower()]
     if level:
-        results = [e for e in results if e.level == level]
-    return [e.model_dump(mode="json") for e in results]
+        experiments = [e for e in experiments if e.level == level]
+    return experiments
 
 
-def experiment(experiment_id: str) -> dict[str, Any]:
-    for item in _experiments():
-        if item.id == experiment_id:
-            return item.model_dump(mode="json")
-    raise NotFoundError("No such experiment")
+def get_experiment(experiment_id: str) -> Any:
+    experiment = _experiments_by_id().get(experiment_id)
+    if experiment is None:
+        raise NotFoundError("No experiment with id '{0}'".format(experiment_id))
+    return experiment
 
 
 # ── Reference missions ────────────────────────────────────────
 
 
-def reference_missions(
-    *, status: str | None = None, destination: str | None = None, q: str | None = None
-) -> list[dict[str, Any]]:
-    results = _missions()
+def list_missions(
+    *,
+    status: Optional[str] = None,
+    destination: Optional[str] = None,
+    q: Optional[str] = None,
+) -> List[Any]:
+    missions = _missions()
     if status:
-        results = [m for m in results if m.status == status]
+        missions = [m for m in missions if m.status == status]
     if destination:
-        results = [m for m in results if destination in m.destination_ids]
+        missions = [m for m in missions if destination in m.destination_ids]
     if q:
-        results = [
-            m for m in results if _matches(q, [m.name, m.objective, m.overview, m.operator])
+        missions = [
+            m
+            for m in missions
+            if _matches([m.name, m.objective, m.operator, m.mission_type], q)
         ]
-    return [m.model_dump(mode="json") for m in results]
+    return missions
 
 
-def reference_mission(mission_id: str) -> dict[str, Any]:
-    for mission in _missions():
-        if mission.id == mission_id:
-            return mission.model_dump(mode="json")
-    raise NotFoundError("No such mission")
+def get_mission(mission_id: str) -> Any:
+    mission = _missions_by_id().get(mission_id)
+    if mission is None:
+        raise NotFoundError("No reference mission with id '{0}'".format(mission_id))
+    return mission
 
 
 # ── Assets ────────────────────────────────────────────────────
 
 
-def assets(*, kind: str | None = None, tag: str | None = None, subject: str | None = None,
-           q: str | None = None) -> list[dict[str, Any]]:
-    results = _assets()
+@lru_cache(maxsize=1)
+def _assets_by_id() -> Dict[str, Any]:
+    return {asset.id: asset for asset in _assets()}
+
+
+def list_assets(
+    *,
+    kind: Optional[str] = None,
+    tag: Optional[str] = None,
+    subject: Optional[str] = None,
+    q: Optional[str] = None,
+) -> List[Any]:
+    assets = _assets()
     if kind:
-        results = [a for a in results if a.kind == kind]
+        assets = [asset for asset in assets if asset.kind == kind]
     if tag:
-        results = [a for a in results if tag.lower() in [t.lower() for t in a.tags]]
+        assets = [asset for asset in assets if tag in asset.tags]
     if subject:
-        results = [a for a in results if subject in a.subject_ids]
+        assets = [asset for asset in assets if subject in asset.subject_ids]
     if q:
-        results = [a for a in results if _matches(q, [a.title, a.description, a.alt] + list(a.tags))]
-    return [a.model_dump(mode="json") for a in results]
+        assets = [
+            asset
+            for asset in assets
+            if _matches([asset.title, asset.description] + list(asset.tags), q)
+        ]
+    return assets
 
 
-def asset(asset_id: str) -> dict[str, Any]:
-    for item in _assets():
-        if item.id == asset_id:
-            return item.model_dump(mode="json")
-    raise NotFoundError("No such asset")
+def get_asset(asset_id: str) -> Any:
+    asset = _assets_by_id().get(asset_id)
+    if asset is None:
+        raise NotFoundError("No asset with id '{0}'".format(asset_id))
+    return asset
 
 
-# ── Summary ───────────────────────────────────────────────────
+def catalog_summary() -> Dict[str, Any]:
+    """Counts and groupings, for landing-page and navigation labels.
 
-
-def catalog_summary() -> dict[str, Any]:
-    """What the catalog holds, for navigation and for the help desk.
-
-    Also the honest answer to "is anything actually populated here?" — a client
-    can check the counts before rendering a section.
+    Real numbers, computed from the catalog itself rather than typed into a
+    template, so a claim on the landing page cannot outlive the content that
+    justified it.
     """
-    catalog = _catalog()
-    kinds: dict[str, int] = {}
-    for obj in _objects():
-        kinds[obj.kind.value] = kinds.get(obj.kind.value, 0) + 1
+    objects = _objects()
+    assets = _assets()
+    topics = _topics()
 
-    strands: dict[str, int] = {}
-    for topic in _topics():
-        strands[topic.strand] = strands.get(topic.strand, 0) + 1
+    by_kind: Dict[str, int] = {}
+    for obj in objects:
+        by_kind[obj.kind.value] = by_kind.get(obj.kind.value, 0) + 1
 
-    asset_kinds: dict[str, int] = {}
-    for item in _assets():
-        asset_kinds[item.kind] = asset_kinds.get(item.kind, 0) + 1
+    assets_by_kind: Dict[str, int] = {}
+    for asset in assets:
+        assets_by_kind[asset.kind] = assets_by_kind.get(asset.kind, 0) + 1
+
+    strand_counts: Dict[str, int] = {}
+    for topic in topics:
+        strand_counts[topic.strand] = strand_counts.get(topic.strand, 0) + 1
 
     return {
-        "space_objects": {"total": len(_objects()), "by_kind": kinds},
-        "launch_sites": {"total": len(_sites())},
+        "space_objects": {"total": len(objects), "by_kind": by_kind},
+        "launch_sites": {"total": len(_launch_sites())},
         "science": {
-            "total": len(_topics()),
-            "strands": [{"name": s, "count": strands.get(s, 0)} for s in catalog.STRANDS],
-            "interactive": sum(1 for t in _topics() if t.interactive is not None),
+            "total": len(topics),
+            "strands": [
+                {"name": name, "count": count} for name, count in strand_counts.items()
+            ],
+            "interactive": sum(1 for topic in topics if topic.interactive is not None),
         },
         "experiments": {"total": len(_experiments())},
         "missions": {"total": len(_missions())},
-        "assets": {"total": len(_assets()), "by_kind": asset_kinds},
+        "assets": {"total": len(assets), "by_kind": assets_by_kind},
     }
+
+
+def catalog_health() -> Dict[str, Any]:
+    """Counts, so an empty section is visible as a data problem rather than a bug."""
+    try:
+        return {
+            "available": True,
+            "objects": len(_objects()),
+            "launch_sites": len(_launch_sites()),
+            "science_topics": len(_topics()),
+            "experiments": len(_experiments()),
+            "missions": len(_missions()),
+            "assets": len(_assets()),
+            "reason": None,
+        }
+    except (EngineUnavailableError, ImportError) as exc:
+        return {"available": False, "reason": str(exc)}

@@ -40,7 +40,6 @@ const Explore = lazy(() => import('@/pages/Explore'));
 const ObjectDetail = lazy(() => import('@/pages/ObjectDetail'));
 const Catalog = lazy(() => import('@/pages/Catalog'));
 const Learn = lazy(() => import('@/pages/Learn'));
-const LessonDetail = lazy(() => import('@/pages/LessonDetail'));
 const RocketLab = lazy(() => import('@/pages/RocketLab'));
 const Builder = lazy(() => import('@/pages/Builder'));
 const Launch = lazy(() => import('@/pages/Launch'));
