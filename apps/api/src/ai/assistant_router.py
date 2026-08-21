@@ -8,7 +8,7 @@ and get a sourced answer before creating an account. Conversation *persistence*
 from typing import Annotated, Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.ai.assistant_service import ask, explain_failure, provider_info
 from src.core.engines import ensure_engine_paths
@@ -67,9 +67,41 @@ _EXPLAIN_RESPONSES: dict = {
 
 
 class AskRequest(BaseModel):
-    """A question for the assistant."""
+    """A question for the assistant, with what the client is currently showing.
+
+    `context` is deliberately untyped here. Its shape is the client's current
+    view — the rocket being built, the flight just flown, the conditions at the
+    pad — and pinning it to a schema in the API would mean editing three files
+    every time the builder gains a field. It is rendered by
+    ``ai.context.workbench``, which reads only the keys it knows, sanitizes all
+    free text, and ignores everything else.
+
+    The size cap is the real defence: without it this endpoint would accept an
+    arbitrarily large blob and hand it to a model.
+    """
 
     question: Annotated[str, Field(min_length=3, max_length=1000)]
+    context: dict[str, Any] | None = Field(
+        default=None,
+        description="The client's current state: rocket, mission, weather, simulation, evaluation.",
+    )
+
+    @field_validator("context")
+    @classmethod
+    def _cap_context_size(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Reject a context large enough to be an attack rather than a page state.
+
+        A full telemetry series is megabytes; a workbench context is a few
+        kilobytes. Anything past 64 KB is not what this field is for.
+        """
+        if value is None:
+            return None
+        import json
+
+        encoded = json.dumps(value, default=str)
+        if len(encoded) > 64_000:
+            raise ValueError("context is too large; send a summary, not raw telemetry")
+        return value
 
 
 class ExplainFailureRequest(BaseModel):
@@ -83,13 +115,19 @@ class ExplainFailureRequest(BaseModel):
 
 @router.post("/ask", response_model=_ASK_MODEL, responses=_AI_RESPONSES, tags=["ai"])
 async def ask_question(payload: AskRequest) -> dict:
-    """Answer a space or engineering question from the knowledge corpus.
+    """Answer a space or engineering question.
 
     The answer is assembled from retrieved evidence and cites what it used. If
     the corpus holds nothing relevant, the assistant says so instead of
     inventing an answer.
+
+    When the client sends `context`, the user's own rocket, flight and launch
+    conditions are added to that evidence — so "why did my rocket fail?" is
+    answered from the failure record of the flight they just watched, with the
+    measured value and the threshold it crossed, rather than from the general
+    theory of why rockets fail.
     """
-    return success_envelope(await ask(payload.question))
+    return success_envelope(await ask(payload.question, payload.context))
 
 
 @router.post(
