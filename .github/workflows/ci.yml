@@ -50,6 +50,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+
+      # The web tsconfig compiles the simulation engine's sources directly
+      # rather than a built artefact, so the engine's own dev dependencies —
+      # @types/react and @types/three in particular — have to be present or
+      # every hook in its adapters typechecks as `any`.
+      - name: Install the simulation engine's dev dependencies
+        working-directory: packages/simulation-engine
+        run: npm ci
+
       - run: npm ci
       - name: Typecheck and build
         run: npm run build

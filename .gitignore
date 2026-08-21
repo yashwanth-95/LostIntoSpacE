@@ -9,9 +9,18 @@ __pycache__/
 *$py.class
 *.egg-info/
 *.egg
-dist/
-build/
 .eggs/
+
+# Build output. Anchored to the directories that actually produce it: a bare
+# `build/` or `dist/` matches at any depth, and silently swallowed
+# `apps/web/src/components/features/build/` — real source that never reached a
+# commit, and that CI was the first thing to notice was missing.
+/dist/
+/build/
+apps/*/dist/
+apps/*/build/
+packages/*/dist/
+packages/*/build/
 venv/
 .venv/
 env/

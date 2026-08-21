@@ -21,6 +21,25 @@ dependencies = [
     "numpy>=1.21",
 ]
 
+# Package discovery, stated explicitly.
+#
+# The repository root holds eleven top-level directories, and setuptools will
+# not guess which of them are packages — it refuses the build rather than
+# shipping something unintended, which is the right call and is how CI first
+# failed here.
+#
+# This project owns the P4 trees only (see the header): `data`, `search` and
+# `ai`, plus the shared `contracts` package, which lives under
+# `packages/contracts/src` and is mapped in below. `apps/api` and `simulation`
+# declare their own manifests and are installed separately.
+[tool.setuptools]
+package-dir = { "contracts" = "packages/contracts/src/contracts" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["data*", "search*", "ai*"]
+exclude = ["apps*", "assets*", "database*", "deployment*", "docs*", "evaluation*", "packages*", "scripts*", "scientific*", "simulation*", "tests*"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
