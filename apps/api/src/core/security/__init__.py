@@ -19,6 +19,7 @@ the DB check - purely redundant complexity.
 
 import hashlib
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -72,6 +73,13 @@ def create_access_token(*, user_id: str, settings: Settings) -> tuple[str, int]:
         "type": ACCESS_TOKEN_TYPE,
         "iat": now,
         "exp": now + timedelta(seconds=expires_in),
+        # A unique token id (RFC 7519 §4.1.7). Without it, `iat` and `exp` are
+        # whole seconds, so two tokens issued for the same user in the same
+        # second have identical payloads and therefore identical signatures —
+        # a refresh would hand back a byte-for-byte copy of the token it was
+        # supposed to be replacing. It is also the claim any future
+        # revoke-by-token-id would key on.
+        "jti": uuid.uuid4().hex,
     }
     token = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
     return token, expires_in

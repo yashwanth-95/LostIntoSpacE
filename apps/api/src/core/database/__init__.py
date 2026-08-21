@@ -7,6 +7,7 @@ dependency; no route uses it yet.
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import NullPool
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -36,15 +37,34 @@ __all__ = [
 ]
 
 
-def build_engine(settings: Settings) -> AsyncEngine:
+def build_engine(settings: Settings, *, pooled: bool = True) -> AsyncEngine:
     """Create an async engine. Separate from the module-level singleton so tests
     can build a throwaway engine against a different database.
+
+    Args:
+        settings: Configuration carrying the database URL.
+        pooled: Keep connections in a pool for reuse. Pass ``False`` to open and
+            close a connection per checkout.
+
+    Notes:
+        `pooled=False` exists for the test suite, and the reason is specific
+        rather than a matter of taste. An asyncpg connection is bound to the
+        event loop that created it. `TestClient` runs the application in its own
+        loop, while an async pytest fixture runs in pytest-asyncio's — so a
+        pooled connection opened by the fixture and later reused by a request
+        fails with "got Future attached to a different loop", intermittently and
+        confusingly. A null pool means no connection outlives the loop that made
+        it.
+
+        Production keeps the pool: there is one loop there, and reconnecting per
+        request would be a real cost for no benefit.
     """
     return create_async_engine(
         settings.database_url,
         echo=settings.database_echo,
         pool_pre_ping=True,  # drop dead connections rather than failing a request
         future=True,
+        **({} if pooled else {"poolclass": NullPool}),
     )
 
 

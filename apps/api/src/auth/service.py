@@ -156,6 +156,9 @@ async def rotate_refresh_token(
     are revoked defensively, and the SAME generic error is raised as for any
     other invalid token, so an attacker gets no signal that reuse specifically
     was what triggered the lockout.
+
+    The defensive revocation commits itself before raising, because the
+    surrounding request rolls back on exception and would otherwise undo it.
     """
     row = await _find_refresh_token_by_raw(session, raw_token)
 
@@ -165,6 +168,17 @@ async def rotate_refresh_token(
     if row.revoked_at is not None:
         logger.warning("refresh token reuse detected for user_id=%s", row.user_id)
         await revoke_all_active_refresh_tokens(session, user_id=row.user_id)
+        # Commit before raising. `get_db` rolls the session back on any
+        # exception, and the 401 below is an exception — so without this the
+        # defensive revocation is discarded and the lockout this branch exists
+        # to perform never actually happens. The documented guarantee was not
+        # holding: the newest, legitimately-issued token stayed valid after a
+        # replay, which is exactly the token a thief would be holding.
+        #
+        # This is the one place in the codebase a service commits for itself.
+        # It is justified because the write must outlive the failure that
+        # triggered it, which is the opposite of the normal transactional rule.
+        await session.commit()
         raise UnauthorizedError(_INVALID_REFRESH_TOKEN_MESSAGE, code=_INVALID_REFRESH_TOKEN_CODE)
 
     if row.expires_at <= datetime.now(UTC):
