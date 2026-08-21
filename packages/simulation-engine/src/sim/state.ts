@@ -48,6 +48,12 @@ export type StageStatus =
   | 'shutdown'
   /** Jettisoned. */
   | 'separated'
+  /**
+   * Failed. The Python engine sets this when a failure disables a stage, and it
+   * appears in telemetry, so the union has to be able to name it — a state one
+   * engine can emit and the other cannot represent is a silent type lie.
+   */
+  | 'failed'
   /** Failed; will not fire again. */
   | 'failed';
 
