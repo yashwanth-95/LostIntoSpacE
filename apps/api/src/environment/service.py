@@ -90,12 +90,13 @@ async def site_weather(site_id: str, *, refresh: bool = False) -> Dict[str, Any]
         else 0.0
     )
 
-    payload = observation.model_dump(mode="json")
-    payload["temperature_C"] = round(observation.temperature_K - 273.15, 2)
-
+    # The observation is returned as the model, not as a dumped dict. FastAPI
+    # serialises it directly — and `temperature_C` is a computed field, which
+    # serialises but is not accepted as *input*, so round-tripping it through a
+    # dict made the response fail its own validation.
     return {
         "site": site,
-        "observation": payload,
+        "observation": observation,
         "suitability": _assess(observation),
         "simulation_environment": _simulation_environment(observation),
         "density_vs_standard_pct": round(delta_pct, 2),

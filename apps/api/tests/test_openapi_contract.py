@@ -65,8 +65,17 @@ EXPECTED_PUBLIC = {
     ("get", "/api/v1/catalog/assets/{asset_id}"),
     # Launch-site weather is a public observation about a public place. It is
     # also required before a guest can fly a realistic mission.
+    ("get", "/api/v1/environment/weather"),
     ("get", "/api/v1/environment/weather/{site_id}"),
     ("get", "/api/v1/environment/simulation-config/{site_id}"),
+    # The wind profile a surface observation implies, from the same model the
+    # force calculation uses. Public because it is what the wind-shear lesson
+    # draws, and a lesson behind a login is not a lesson.
+    ("get", "/api/v1/environment/wind-profile"),
+    # Which providers are configured. Reports presence, never a credential —
+    # the same reason /health/engines is public.
+    ("get", "/api/v1/environment/provider"),
+    ("get", "/api/v1/catalog/health"),
 }
 
 

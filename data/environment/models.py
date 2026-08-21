@@ -10,7 +10,7 @@ the classic way to lose a spacecraft.
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 __all__ = [
     "WindObservation",
@@ -75,10 +75,17 @@ class WeatherObservation(BaseModel):
     fallback_reason: Optional[str] = None
     attribution: str = ""
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def temperature_C(self) -> float:
-        """Temperature in Celsius, for display."""
-        return self.temperature_K - 273.15
+        """Temperature in Celsius, for display.
+
+        A computed field rather than a bare property, so it serialises with the
+        observation and appears in the OpenAPI schema. The API previously
+        injected it into the payload by hand, which meant the documented shape
+        and the actual shape disagreed.
+        """
+        return round(self.temperature_K - 273.15, 2)
 
 
 class LaunchConstraint(BaseModel):
