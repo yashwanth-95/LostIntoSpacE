@@ -1,199 +1,161 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Card, EmptyState, ErrorPanel, Input, Spinner } from '@/components/ui';
-import { search, type SearchResultItem } from '@/services/api';
+import { Link } from 'react-router-dom';
+
+import { Acquiring, Badge, ErrorPanel, Input, Panel, SectionRule } from '@/components/ui';
 import { useDebounce } from '@/hooks/useDebounce';
+import { catalog, type ReferenceMission } from '@/services/api';
+import { cn } from '@/lib/utils';
 
 /**
  * The mission library.
  *
- * Backed by the search API over the bundled knowledge corpus rather than by the
- * `missions` table. That is deliberate: the table holds a *user's own* mission
- * configurations (their rocket, their target), while this page is the reference
- * library of real flights. They are different things that happened to share a
- * word.
+ * Real flights, from the catalog. Distinct from a *user's* missions, which are
+ * their own rocket and their own target and live in the workspace — these
+ * happened, and they are here to be compared against.
  *
- * The practical benefit is that this works with no database and no network —
- * the corpus is bundled, and every record carries its source attribution.
+ * Each carries the engineering numbers worth putting next to your own design,
+ * and — where there was one — what went wrong. That last part is the reason the
+ * library exists: Apollo 13 and Challenger are more instructive than any
+ * mission that went to plan.
  */
+
+const STATUS_TONE: Record<string, 'nominal' | 'cryo' | 'caution' | 'default'> = {
+  active: 'nominal',
+  extended: 'nominal',
+  complete: 'cryo',
+  ended: 'cryo',
+  planned: 'caution',
+  lost: 'caution',
+};
+
 export default function Missions() {
   const [query, setQuery] = useState('');
   const debounced = useDebounce(query, 250);
-  const [items, setItems] = useState<SearchResultItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [missions, setMissions] = useState<ReferenceMission[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<SearchResultItem | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setError(null);
-
-    // An empty query still needs a corpus-wide listing, so a broad term stands
-    // in for "everything" — the search engine has no match-all mode.
-    search
-      .query({ q: debounced.trim() || 'mission spacecraft launch', entity_type: ['MISSION'], limit: 40 })
-      .then((response) => {
-        if (!cancelled) setItems(response.results ?? []);
+    catalog
+      .missions(debounced.trim() ? { q: debounced.trim() } : {})
+      .then((data) => {
+        if (!cancelled) setMissions(data);
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
           setError(cause instanceof Error ? cause.message : 'Missions could not be loaded.');
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
-
     return () => {
       cancelled = true;
     };
   }, [debounced]);
 
-  const topics = useMemo(() => {
-    const set = new Set<string>();
-    for (const item of items) for (const topic of item.topics ?? []) set.add(topic);
-    return [...set].slice(0, 12);
-  }, [items]);
+  const withFailures = useMemo(
+    () => missions?.filter((mission) => mission.failures.length > 0) ?? [],
+    [missions],
+  );
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto max-w-[1400px] px-6 py-8">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-6 hairline-b pb-5">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-space-100 mb-1">Missions</h1>
-          <p className="text-sm text-space-400">
-            Real flights, their objectives, outcomes and discoveries — with sources.
+          <p className="t-label mb-1">Explore</p>
+          <h1 className="font-display text-display-sm leading-none text-ink-50">Missions</h1>
+          <p className="mt-3 max-w-[42rem] text-sm leading-relaxed text-ink-400">
+            Flights that actually happened, with the vehicle numbers worth putting beside your
+            own design.
+            {withFailures.length > 0 && (
+              <> {withFailures.length} of them went wrong, which is where the lessons are.</>
+            )}
           </p>
         </div>
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search missions…"
-          aria-label="Search missions"
-          className="w-full sm:w-72"
-        />
+
+        <div className="w-full max-w-xs">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search missions…"
+            aria-label="Search missions"
+          />
+          {missions && (
+            <p className="mt-1.5 font-mono text-micro text-ink-600">
+              {missions.length} mission{missions.length === 1 ? '' : 's'}
+            </p>
+          )}
+        </div>
       </header>
 
-      {topics.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {topics.map((topic) => (
-            <button
-              key={topic}
-              onClick={() => setQuery(topic)}
-              className="px-2 py-0.5 rounded text-2xs border border-space-700 bg-space-800/40 text-space-400 hover:text-space-200 transition-colors focus-ring"
-            >
-              {topic}
-            </button>
-          ))}
-        </div>
-      )}
+      {error && <ErrorPanel message={error} className="mb-6" />}
+      {!missions && !error && <Acquiring rows={8} />}
 
-      {error && <ErrorPanel title="Could not load missions" message={error} />}
+      {missions && (
+        <>
+          <SectionRule label="The library" />
+          <ul className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            {missions.map((mission) => (
+              <li key={mission.id}>
+                <Link to={`/missions/${mission.id}`}>
+                  <Panel className="group flex h-full flex-col gap-3 overflow-hidden transition-colors hover:border-signal-flame/40">
+                    {mission.image && (
+                      <img
+                        src={mission.image.url}
+                        alt={mission.image.alt}
+                        loading="lazy"
+                        decoding="async"
+                        className="-mx-4 -mt-4 mb-0 aspect-[16/9] w-[calc(100%+2rem)] max-w-none object-cover"
+                      />
+                    )}
 
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
-      ) : items.length === 0 ? (
-        <EmptyState title="No missions found" description="Try a different search term." />
-      ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((mission) => (
-            <li key={mission.id}>
-              <button
-                onClick={() => setSelected(mission)}
-                className="w-full h-full text-left glass-panel p-4 hover:border-accent-cyan/40 transition-colors focus-ring"
-              >
-                <h2 className="font-display text-sm font-semibold text-space-100 mb-1.5">
-                  {mission.title}
-                </h2>
-                {mission.summary && (
-                  <p className="text-2xs text-space-400 leading-relaxed line-clamp-3 mb-2">
-                    {mission.summary}
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-1">
-                  {(mission.topics ?? []).slice(0, 3).map((topic) => (
-                    <Badge key={topic} className="text-2xs">
-                      {topic}
-                    </Badge>
-                  ))}
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-display text-xl leading-tight text-ink-50">
+                        {mission.name}
+                      </h3>
+                      <Badge variant={STATUS_TONE[mission.status] ?? 'default'}>
+                        {mission.status}
+                      </Badge>
+                    </div>
 
-      {selected && <MissionDetail item={selected} onClose={() => setSelected(null)} />}
-    </div>
-  );
-}
+                    <p className="text-xs leading-relaxed text-ink-300">{mission.objective}</p>
 
-function MissionDetail({ item, onClose }: { item: SearchResultItem; onClose: () => void }) {
-  const sources = item.provenance?.sources ?? [];
+                    <dl className="mt-auto space-y-1 hairline-t pt-2.5 font-mono text-[0.6rem] text-ink-600">
+                      <div className="flex justify-between gap-2">
+                        <dt>Operator</dt>
+                        <dd className="text-ink-300">{mission.operator}</dd>
+                      </div>
+                      {mission.launch_date && (
+                        <div className="flex justify-between gap-2">
+                          <dt>Launched</dt>
+                          <dd className="text-ink-300">{mission.launch_date}</dd>
+                        </div>
+                      )}
+                      {mission.launch_vehicle && (
+                        <div className="flex justify-between gap-2">
+                          <dt>Vehicle</dt>
+                          <dd className="truncate text-ink-300">{mission.launch_vehicle}</dd>
+                        </div>
+                      )}
+                    </dl>
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-space-950/80 backdrop-blur-sm p-4 sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={item.title}
-      onClick={onClose}
-    >
-      <Card
-        className="w-full max-w-2xl my-8 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="font-display text-lg font-semibold text-space-100">{item.title}</h2>
-          <button
-            onClick={onClose}
-            className="text-space-500 hover:text-space-200 text-lg leading-none focus-ring rounded"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        {item.summary && (
-          <p className="text-sm text-space-300 leading-relaxed whitespace-pre-line">
-            {item.summary}
-          </p>
-        )}
-
-        {(item.topics ?? []).length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {item.topics!.map((topic) => (
-              <Badge key={topic}>{topic}</Badge>
+                    {mission.failures.length > 0 && (
+                      <p
+                        className={cn(
+                          'font-condensed text-micro uppercase tracking-label',
+                          'text-signal-oxide-bright',
+                        )}
+                      >
+                        {mission.failures.length} recorded failure
+                        {mission.failures.length === 1 ? '' : 's'}
+                      </p>
+                    )}
+                  </Panel>
+                </Link>
+              </li>
             ))}
-          </div>
-        )}
-
-        {sources.length > 0 && (
-          <div className="border-t border-space-800 pt-3">
-            <h3 className="text-2xs uppercase tracking-wider text-space-500 mb-1.5">Sources</h3>
-            <ul className="space-y-1">
-              {sources.map((source, i) => (
-                <li key={i} className="text-2xs text-space-500">
-                  {source.source_url ? (
-                    <a
-                      href={source.source_url}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="text-accent-cyan hover:underline"
-                    >
-                      {source.source_name}
-                    </a>
-                  ) : (
-                    source.source_name
-                  )}
-                  <span className="text-space-600"> · {source.source_type}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </Card>
+          </ul>
+        </>
+      )}
     </div>
   );
 }

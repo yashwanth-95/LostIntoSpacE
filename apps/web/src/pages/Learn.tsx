@@ -1,198 +1,168 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, EmptyState, ErrorPanel, Input, Spinner } from '@/components/ui';
-import { search, type SearchResultItem } from '@/services/api';
+
+import { Acquiring, Badge, ErrorPanel, Input, Panel, SectionRule } from '@/components/ui';
 import { useDebounce } from '@/hooks/useDebounce';
+import { catalog, type ScienceTopic } from '@/services/api';
 import { cn } from '@/lib/utils';
 
 /**
- * Learning paths and concepts.
+ * The science library.
  *
- * Content comes from the bundled knowledge corpus through the search API, so
- * the lessons are available with no database and no network. Progress tracking
- * is the part that needs an account and a database, and it is marked as such
- * rather than faked.
+ * Twenty-six topics across five strands, backed by the catalog. The previous
+ * version was four hardcoded search queries against a corpus, which meant the
+ * "curriculum" was whatever full-text search happened to return that day and
+ * nothing could state a prerequisite.
  *
- * The paths below are curated orderings over that corpus: a list of search
- * terms that walks someone from "what is thrust" to "why did my second stage
- * not circularise". Ordering is editorial; the content is not duplicated.
+ * Strands are presented in reading order, and within a strand topics are in the
+ * order they were authored to be read — foundation before intermediate before
+ * advanced, with prerequisites always earlier than the topics that need them.
  */
-
-interface Path {
-  id: string;
-  title: string;
-  description: string;
-  level: 'beginner' | 'intermediate' | 'advanced';
-  query: string;
-}
-
-const PATHS: readonly Path[] = [
-  {
-    id: 'propulsion',
-    title: 'Propulsion',
-    description: 'How engines make thrust, what specific impulse buys you, and why staging exists.',
-    level: 'beginner',
-    query: 'thrust specific impulse propulsion engine staging',
-  },
-  {
-    id: 'orbits',
-    title: 'Orbital mechanics',
-    description: 'Why orbit is a sideways problem, delta-v budgets, and transfer manoeuvres.',
-    level: 'intermediate',
-    query: 'orbit orbital mechanics delta-v transfer inclination',
-  },
-  {
-    id: 'aero',
-    title: 'Atmosphere and aerodynamics',
-    description: 'Drag, dynamic pressure, max-Q, and why vehicles throttle down on the way up.',
-    level: 'intermediate',
-    query: 'atmosphere drag dynamic pressure max-q aerodynamics',
-  },
-  {
-    id: 'missions',
-    title: 'Mission design',
-    description: 'Turning an objective into a launch window, a trajectory and a vehicle.',
-    level: 'advanced',
-    query: 'mission design trajectory launch window payload',
-  },
-] as const;
-
 export default function Learn() {
-  const [activePath, setActivePath] = useState<Path>(PATHS[0]);
   const [query, setQuery] = useState('');
   const debounced = useDebounce(query, 250);
-
-  const [items, setItems] = useState<SearchResultItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [level, setLevel] = useState<string | null>(null);
+  const [topics, setTopics] = useState<ScienceTopic[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const effectiveQuery = useMemo(
-    () => (debounced.trim() ? debounced.trim() : activePath.query),
-    [debounced, activePath],
-  );
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setError(null);
-
-    search
-      .query({ q: effectiveQuery, entity_type: ['CONCEPT'], limit: 30 })
-      .then((response) => {
-        if (!cancelled) setItems(response.results ?? []);
+    catalog
+      .science({
+        ...(debounced.trim() ? { q: debounced.trim() } : {}),
+        ...(level ? { level } : {}),
+      })
+      .then((data) => {
+        if (!cancelled) setTopics(data);
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : 'Lessons could not be loaded.');
+          setError(cause instanceof Error ? cause.message : 'The library could not be loaded.');
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
-
     return () => {
       cancelled = true;
     };
-  }, [effectiveQuery]);
+  }, [debounced, level]);
+
+  const strands = useMemo(() => {
+    if (!topics) return [];
+    const seen: string[] = [];
+    for (const topic of topics) if (!seen.includes(topic.strand)) seen.push(topic.strand);
+    return seen.map((strand) => ({
+      strand,
+      items: topics.filter((topic) => topic.strand === strand),
+    }));
+  }, [topics]);
+
+  const interactiveCount = topics?.filter((t) => t.interactive).length ?? 0;
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
-      <header>
-        <h1 className="font-display text-2xl font-semibold text-space-100 mb-1">Learn</h1>
-        <p className="text-sm text-space-400 max-w-2xl">
-          The engineering you need to build something that flies. Everything here connects to the
-          Rocket Lab — read about specific impulse, then go and change an engine.
-        </p>
+    <div className="mx-auto max-w-[1400px] px-6 py-8">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-6 hairline-b pb-5">
+        <div>
+          <p className="t-label mb-1">Understand</p>
+          <h1 className="font-display text-display-sm leading-none text-ink-50">
+            The science
+          </h1>
+          <p className="mt-3 max-w-[42rem] text-sm leading-relaxed text-ink-400">
+            From what an orbit actually is to why a windy day at 11 km ends a launch.
+            {interactiveCount > 0 && (
+              <>
+                {' '}
+                {interactiveCount} of these carry a figure you can drive — the maths comes from
+                the same physics package that flies your missions, so the lesson and the
+                simulator cannot disagree.
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="w-full max-w-xs">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search the library…"
+            aria-label="Search science topics"
+          />
+          <div className="mt-2 flex flex-wrap gap-1">
+            {[null, 'foundation', 'intermediate', 'advanced'].map((option) => (
+              <button
+                key={option ?? 'all'}
+                onClick={() => setLevel(option)}
+                className={cn(
+                  'rounded-instrument border px-2 py-0.5 font-condensed text-micro uppercase tracking-label',
+                  'transition-colors duration-quick focus-ring',
+                  level === option
+                    ? 'border-signal-flame/40 bg-signal-flame/10 text-signal-flame-bright'
+                    : 'border-ink-700 bg-ink-850 text-ink-500 hover:text-ink-200',
+                )}
+              >
+                {option ?? 'All'}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
 
-      <section aria-labelledby="paths-heading" className="space-y-3">
-        <h2 id="paths-heading" className="font-display text-sm font-semibold text-space-200">
-          Learning paths
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {PATHS.map((path) => (
-            <button
-              key={path.id}
-              onClick={() => {
-                setActivePath(path);
-                setQuery('');
-              }}
-              className={cn(
-                'text-left p-4 rounded-lg border transition-colors focus-ring',
-                activePath.id === path.id && !debounced.trim()
-                  ? 'bg-accent-cyan/10 border-accent-cyan/40'
-                  : 'glass-panel hover:border-space-600',
-              )}
-              aria-pressed={activePath.id === path.id}
-            >
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <h3 className="font-display text-sm font-semibold text-space-100">
-                  {path.title}
-                </h3>
-                <Badge
-                  variant={path.level === 'beginner' ? 'nominal' : 'default'}
-                  className="shrink-0 text-2xs"
-                >
-                  {path.level}
-                </Badge>
-              </div>
-              <p className="text-2xs text-space-400 leading-relaxed">{path.description}</p>
-            </button>
-          ))}
-        </div>
-      </section>
+      {error && <ErrorPanel message={error} className="mb-6" />}
+      {!topics && !error && <Acquiring rows={8} />}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-space-800 pt-5">
-        <h2 className="font-display text-sm font-semibold text-space-200">
-          {debounced.trim() ? `Results for “${debounced.trim()}”` : `${activePath.title} concepts`}
-        </h2>
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search all concepts…"
-          aria-label="Search concepts"
-          className="w-full sm:w-72"
-        />
+      <div className="space-y-10">
+        {strands.map(({ strand, items }) => (
+          <section key={strand}>
+            <SectionRule
+              label={strand}
+              aside={<span className="font-mono text-micro text-ink-600">{items.length}</span>}
+            />
+            <ol className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              {items.map((topic) => (
+                <li key={topic.slug}>
+                  <Link to={`/learn/${topic.slug}`}>
+                    <Panel className="group h-full space-y-2.5 transition-colors hover:border-signal-flame/40">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="font-display text-lg leading-tight text-ink-50">
+                          {topic.title}
+                        </h3>
+                        <Badge
+                          variant={
+                            topic.level === 'foundation'
+                              ? 'nominal'
+                              : topic.level === 'intermediate'
+                                ? 'cryo'
+                                : 'xenon'
+                          }
+                        >
+                          {topic.level}
+                        </Badge>
+                      </div>
+
+                      <p className="text-xs leading-relaxed text-ink-300">{topic.summary}</p>
+
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 hairline-t pt-2.5 font-mono text-[0.6rem] text-ink-600">
+                        <span>{topic.estimated_minutes} min</span>
+                        {topic.interactive && (
+                          <span className="text-signal-flame">interactive figure</span>
+                        )}
+                        {topic.experiment_ids.length > 0 && (
+                          <span>
+                            {topic.experiment_ids.length} experiment
+                            {topic.experiment_ids.length === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        {topic.prerequisites.length > 0 && (
+                          <span>needs {topic.prerequisites.join(', ').replace(/-/g, ' ')}</span>
+                        )}
+                      </div>
+                    </Panel>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
       </div>
-
-      {error && <ErrorPanel title="Could not load lessons" message={error} />}
-
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
-      ) : items.length === 0 ? (
-        <EmptyState title="Nothing found" description="Try a different search term." />
-      ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((concept) => (
-            <li key={concept.id}>
-              <Link
-                to={`/learn/${encodeURIComponent(concept.id)}`}
-                state={{ concept }}
-                className="block h-full glass-panel p-4 hover:border-accent-cyan/40 transition-colors focus-ring"
-              >
-                <h3 className="font-display text-sm font-semibold text-space-100 mb-1.5">
-                  {concept.title}
-                </h3>
-                {concept.summary && (
-                  <p className="text-2xs text-space-400 leading-relaxed line-clamp-3">
-                    {concept.summary}
-                  </p>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <p className="text-2xs text-space-600 border-t border-space-800 pt-4">
-        Progress tracking and quiz attempts are saved to your account. See{' '}
-        <Link to="/workspace" className="text-accent-cyan hover:underline">
-          your workspace
-        </Link>
-        .
-      </p>
     </div>
   );
 }
